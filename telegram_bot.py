@@ -137,7 +137,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-    reply = get_ai_reply(subject["system_prompt"], history, user_text)
+    reply = get_ai_reply(subject_key, subject["system_prompt"], history, user_text)
 
     database.save_message(user.id, user.username or user.first_name, subject_key, "user", user_text)
     database.save_message(user.id, user.username or user.first_name, subject_key, "assistant", reply)

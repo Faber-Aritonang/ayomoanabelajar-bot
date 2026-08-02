@@ -5,3 +5,8 @@ __pycache__/
 *.db
 *.save
 *.gpg
+
+# Materi buku cetak: jangan di-publish ke GitHub publik (isu hak cipta).
+# Materi ini tetap dipakai bot secara lokal, cukup tidak ikut ter-commit.
+materials/*.md
+!materials/.gitkeep

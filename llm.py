@@ -6,12 +6,31 @@ Kalau nanti mau ganti model, cukup ubah MODEL_NAME di sini.
 """
 
 import os
+from pathlib import Path
+
 from anthropic import Anthropic, APIError, APIConnectionError
 
 MODEL_NAME = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 500
+MATERIALS_DIR = Path(__file__).parent / "materials"
 
 _client = None
+
+
+def _load_material(subject_key: str) -> str:
+    """
+    Baca materi buku cetak yang sudah dikurasi untuk mata pelajaran ini
+    dari materials/<subject_key>.md. Kembalikan string kosong kalau
+    file belum ada atau belum diisi (bot tetap jalan normal).
+    """
+    path = MATERIALS_DIR / f"{subject_key}.md"
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8").strip()
+    # Kalau isinya cuma komentar HTML placeholder, anggap kosong.
+    if text.startswith("<!--") and text.endswith("-->"):
+        return ""
+    return text
 
 
 def _get_client():
@@ -26,8 +45,9 @@ def _get_client():
     return _client
 
 
-def get_ai_reply(system_prompt: str, history: list, user_message: str) -> str:
+def get_ai_reply(subject_key: str, system_prompt: str, history: list, user_message: str) -> str:
     """
+    subject_key   : key mata pelajaran (dipakai untuk cari file materials/<subject_key>.md)
     system_prompt : instruksi guru untuk mata pelajaran yang sedang aktif
     history       : list pesan sebelumnya, format [{"role": "user"/"assistant", "content": "..."}]
     user_message  : pesan baru dari anak
@@ -37,11 +57,28 @@ def get_ai_reply(system_prompt: str, history: list, user_message: str) -> str:
     client = _get_client()
     messages = history + [{"role": "user", "content": user_message}]
 
+    # Susun system prompt sebagai list of blocks. Blok materi ditandai
+    # cache_control supaya Anthropic tidak memproses ulang teks materi
+    # yang sama di setiap pesan (jauh lebih hemat & lebih cepat).
+    system_blocks = [{"type": "text", "text": system_prompt}]
+    material_text = _load_material(subject_key)
+    if material_text:
+        system_blocks.append(
+            {
+                "type": "text",
+                "text": (
+                    "MATERI RUJUKAN DARI BUKU CETAK SEKOLAH (jawab berdasarkan isi ini "
+                    "kalau relevan dengan pertanyaan anak):\n\n" + material_text
+                ),
+                "cache_control": {"type": "ephemeral"},
+            }
+        )
+
     try:
         response = client.messages.create(
             model=MODEL_NAME,
             max_tokens=MAX_TOKENS,
-            system=system_prompt,
+            system=system_blocks,
             messages=messages,
         )
         # response.content adalah list block; ambil semua block teks

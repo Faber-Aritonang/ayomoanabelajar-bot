@@ -36,6 +36,36 @@ class ConversationModel(Base):
     message = Column(Text)
     timestamp = Column(String)
 
+
+class QuizScoreModel(Base):
+    __tablename__ = "quiz_scores"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String)
+    username = Column(String)
+    subject = Column(String)
+    score = Column(Integer)
+    total_questions = Column(Integer)
+    timestamp = Column(String)
+
+
+def save_quiz_score(user_id, username, subject, score, total_questions):
+    db = SessionLocal()
+    try:
+        db_item = QuizScoreModel(
+            user_id=str(user_id),
+            username=username,
+            subject=subject,
+            score=score,
+            total_questions=total_questions,
+            timestamp=datetime.now().isoformat()
+        )
+        db.add(db_item)
+        db.commit()
+    finally:
+        db.close()
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

@@ -161,6 +161,7 @@ def main():
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("kuis", kuis_command))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset))
@@ -185,6 +186,28 @@ def main():
         # Mode POLLING - dipakai saat dijalankan lokal di laptop
         logger.info("%s sedang berjalan (Telegram, polling)...", BOT_NAME)
         app.run_polling()
+
+
+
+async def kuis_command(update, context):
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
+    subject = context.user_data.get("subject", "Matematika")
+    prompt = f"Buatkan 1 soal latihan singkat dan menarik tingkat sekolah dasar untuk mata pelajaran {subject}. Berikan pilihan ganda (A, B, C, D) dan jangan berikan kunci jawabannya dulu."
+    
+    try:
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=300,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        question_text = response.content[0].text
+        context.user_data["in_quiz"] = True
+        context.user_data["quiz_question"] = question_text
+        await update.message.reply_text(f"📝 **Kuis Singkat ({subject})**\n\n" + question_text)
+    except Exception as e:
+        await update.message.reply_text("Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!")
 
 
 if __name__ == "__main__":

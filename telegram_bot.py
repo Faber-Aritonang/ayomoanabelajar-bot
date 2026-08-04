@@ -161,8 +161,24 @@ def main():
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    logger.info("%s sedang berjalan (Telegram, polling)...", BOT_NAME)
-    app.run_polling()
+    render_url = os.getenv("RENDER_EXTERNAL_URL")
+
+    if render_url:
+        # Mode WEBHOOK - dipakai saat deploy di Render (Web Service, free tier)
+        port = int(os.getenv("PORT", "10000"))
+        webhook_path = "webhook"
+        webhook_url = f"{render_url}/{webhook_path}"
+        logger.info("%s sedang berjalan (Telegram, webhook) di %s", BOT_NAME, webhook_url)
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=webhook_path,
+            webhook_url=webhook_url,
+        )
+    else:
+        # Mode POLLING - dipakai saat dijalankan lokal di laptop
+        logger.info("%s sedang berjalan (Telegram, polling)...", BOT_NAME)
+        app.run_polling()
 
 
 if __name__ == "__main__":

@@ -198,7 +198,9 @@ def main():
 async def kuis_command(update, context):
     from subjects import get_subject
     from llm import get_ai_reply
+    import database
 
+    user_id = update.effective_user.id
     subject_key = context.user_data.get("subject")
     if not subject_key:
         await update.message.reply_text("Pilih dulu mau belajar apa ya, Adik! Ketik /start atau /menu.")
@@ -208,25 +210,30 @@ async def kuis_command(update, context):
     subject_name = subject["name"]
     system_prompt = subject["system_prompt"]
     
-    prompt = f"Buatkan 1 soal latihan singkat dan menarik tingkat sekolah dasar untuk mata pelajaran {subject_name}. Berikan pilihan ganda (A, B, C, D) dan jangan berikan kunci jawabannya dulu."
+    history = database.get_recent_messages(user_id, subject_key, limit=6)
+    
+    # Menggunakan triple quotes untuk string multi-baris agar tidak error
+    prompt = f"""Buatkan 1 soal latihan untuk mata pelajaran {subject_name}. Berikan pilihan ganda (A, B, C, D) tanpa kunci jawaban di awal.
+    
+INSTRUKSI ADAPTIF PENTING: Evaluasi pemahaman anak dari riwayat obrolan yang diberikan. Jika anak sering salah atau bingung, berikan soal yang lebih dasar dan mudah. Jika anak menjawab dengan cepat dan benar, berikan soal yang 1 tingkat lebih sulit (Level Up). Sesuaikan nada bicaramu agar selalu menyemangati!"""
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
     try:
-        # Menggunakan fungsi LLM yang sama dengan fitur chat utama! (Tanpa history agar fokus ke soal)
-        question_text = get_ai_reply(subject_key, system_prompt, [], prompt)
-        
+        question_text = get_ai_reply(subject_key, system_prompt, history, prompt)
         context.user_data["in_quiz"] = True
-        context.user_data["quiz_question"] = question_text
         
-        await update.message.reply_text(f"📝 *Kuis Singkat ({subject_name})*\n\n" + question_text)
+        # Simpan soal kuis ke database agar Kak Moana ingat apa yang baru saja ia tanyakan
+        username = update.effective_user.username or update.effective_user.first_name
+        database.save_message(user_id, username, subject_key, "assistant", question_text)
+        await update.message.reply_text(f"📝 *Kuis Adaptif ({subject_name})*\n\n" + question_text)
     except Exception as e:
         print(f"Error kuis: {e}")
         await update.message.reply_text("Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!")
 
 
-
 async def laporan_command(update, context):
+    import database
     user_id = update.effective_user.id
     progress = database.get_user_progress(user_id)
     

@@ -19,18 +19,26 @@ _client = None
 
 def _load_material(subject_key: str) -> str:
     """
-    Baca materi buku cetak yang sudah dikurasi untuk mata pelajaran ini
-    dari materials/<subject_key>.md. Kembalikan string kosong kalau
-    file belum ada atau belum diisi (bot tetap jalan normal).
+    Baca materi buku cetak yang sudah dikurasi untuk mata pelajaran ini.
+    Dicari di dua lokasi (yang manapun ditemukan duluan dipakai):
+      1. materials/<subject_key>.md   -> dipakai saat bot jalan lokal di laptop.
+      2. /etc/secrets/<subject_key>.md -> dipakai saat bot jalan di Render,
+         diisi lewat fitur "Secret Files" di dashboard Render (bukan lewat
+         GitHub), supaya materi buku tetap privat.
+    Kembalikan string kosong kalau tidak ditemukan di keduanya, atau kalau
+    isinya masih placeholder (bot tetap jalan normal, cuma tanpa acuan buku).
     """
-    path = MATERIALS_DIR / f"{subject_key}.md"
-    if not path.exists():
-        return ""
-    text = path.read_text(encoding="utf-8").strip()
-    # Kalau isinya cuma komentar HTML placeholder, anggap kosong.
-    if text.startswith("<!--") and text.endswith("-->"):
-        return ""
-    return text
+    candidates = [
+        MATERIALS_DIR / f"{subject_key}.md",
+        Path("/etc/secrets") / f"{subject_key}.md",
+    ]
+    for path in candidates:
+        if path.exists():
+            text = path.read_text(encoding="utf-8").strip()
+            if text.startswith("<!--") and text.endswith("-->"):
+                continue
+            return text
+    return ""
 
 
 def _get_client():

@@ -163,6 +163,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("laporan", laporan_command))
     app.add_handler(CommandHandler("bintang", bintang_command))
+    app.add_handler(CommandHandler("rapor", rapor_command))
+    app.add_handler(CommandHandler("menu", menu_command))
     app.add_handler(CommandHandler("kuis", kuis_command))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("help", help_command))
@@ -273,6 +275,67 @@ async def bintang_command(update, context):
     pesan += f"Luar biasa! Kamu sudah belajar sangat rajin dan berhasil mengumpulkan:\n"
     pesan += f"{teks_bintang} ({total_bintang} Bintang)\n\n"
     pesan += "Terus semangat belajar bersama Kak Moana ya! 🚀"
+    
+    await update.message.reply_markdown(pesan)
+
+
+async def rapor_command(update, context):
+    import database
+    from llm import get_ai_reply
+    
+    user_id = update.effective_user.id
+    
+    await update.message.reply_text("⏳ Mohon tunggu sebentar ya, Kak Moana sedang menganalisis data untuk menyusun Rapor Evaluasi Adik...")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    # Ambil 20 interaksi terakhir dari semua mata pelajaran
+    recent_history = database.get_all_recent_messages(user_id, limit=20)
+    
+    if len(recent_history) < 5:
+        await update.message.reply_text("Data aktivitas belajar belum cukup untuk dianalisis. Yuk, ajak Adik berlatih lebih banyak lagi bersama Kak Moana! 🚀")
+        return
+        
+    # Format riwayat untuk dibaca AI
+    history_text = ""
+    for msg in recent_history:
+        pengirim = "Anak" if msg["role"] == "user" else "Tutor AI"
+        history_text += f"[{msg['subject'].upper()}] {pengirim}: {msg['content']}\n"
+        
+    system_prompt = "Kamu adalah konsultan pendidikan yang ahli memberikan umpan balik (feedback) positif dan konstruktif kepada orang tua."
+    user_prompt = f"""Berikut adalah transkrip riwayat percakapan belajar seorang siswa SD dengan tutor AI-nya baru-baru ini:
+    
+{history_text}
+
+TUGAS:
+Buatkan ringkasan evaluasi (rapor naratif) maksimal 2 paragraf pendek untuk orang tua siswa. 
+1. Sebutkan apa yang sudah dipahami dengan baik berdasarkan riwayat.
+2. Sebutkan konsep yang masih perlu pengulangan/perbaikan (jika ada).
+3. Berikan saran praktis dan actionable yang bisa dilakukan ayah/ibunya di rumah.
+
+Gunakan nada bicara yang profesional, hangat, dan suportif. Hindari pengantar basa-basi, langsung ke isi rapor."""
+    
+    try:
+        # Menggunakan LLM untuk memproses transkrip menjadi ringkasan
+        rapor_text = get_ai_reply("umum", system_prompt, [], user_prompt)
+        
+        pesan_rapor = f"📑 *RAPOR EVALUASI MINGGUAN AI* 📑\n\n{rapor_text}"
+        await update.message.reply_markdown(pesan_rapor)
+        
+    except Exception as e:
+        print(f"Error rapor: {e}")
+        await update.message.reply_text("Maaf, terjadi kesalahan teknis saat menyusun rapor. Coba lagi nanti ya.")
+
+
+async def menu_command(update, context):
+    pesan = "🗂️ *Dashboard Ayo, Moana Belajar!* 🗂️\n\n"
+    pesan += "🎓 *Area Belajar (Untuk Adik):*\n"
+    pesan += "• /start - Pilih pelajaran dan mulai obrolan\n"
+    pesan += "• /kuis - Uji kemampuan dengan soal adaptif\n"
+    pesan += "• /bintang - Lihat koleksi bintang prestasimu ⭐\n\n"
+    pesan += "👨‍👩‍👧 *Area Pantauan (Untuk Orang Tua):*\n"
+    pesan += "• /laporan - Cek angka keaktifan harian\n"
+    pesan += "• /rapor - Baca analisis evaluasi dari AI Tutor\n\n"
+    pesan += "Ketik salah satu perintah di atas kapan saja ya!"
     
     await update.message.reply_markdown(pesan)
 

@@ -161,6 +161,7 @@ def main():
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("laporan", laporan_command))
     app.add_handler(CommandHandler("kuis", kuis_command))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("help", help_command))
@@ -222,6 +223,23 @@ async def kuis_command(update, context):
     except Exception as e:
         print(f"Error kuis: {e}")
         await update.message.reply_text("Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!")
+
+
+
+async def laporan_command(update, context):
+    user_id = update.effective_user.id
+    progress = database.get_user_progress(user_id)
+    
+    if not progress:
+        await update.message.reply_text("Belum ada riwayat aktivitas belajar yang tercatat, Adik/Orang Tua. Yuk, mulai belajar dengan /start!")
+        return
+        
+    text = "📊 *Laporan Kemajuan Belajar Siswa*\n\n"
+    for subject, count, last_time in progress:
+        text += f"• *{subject.capitalize()}*: {count} interaksi obrolan/soal\n"
+        
+    text += "\nTerus semangat mendampingi proses belajar anak! 😊"
+    await update.message.reply_markdown(text)
 
 
 if __name__ == "__main__":

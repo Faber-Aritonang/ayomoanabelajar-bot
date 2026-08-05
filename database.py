@@ -100,3 +100,24 @@ def get_recent_messages(user_id, subject, limit=10):
         return [{"role": role, "content": message} for role, message in rows]
     finally:
         db.close()
+
+def get_user_progress(user_id):
+    from sqlalchemy import func
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(
+                ConversationModel.subject,
+                func.count(ConversationModel.id),
+                func.max(ConversationModel.timestamp)
+            )
+            .filter(ConversationModel.user_id == str(user_id), ConversationModel.role == "user")
+            .group_by(ConversationModel.subject)
+            .all()
+        )
+        return rows
+    except Exception as e:
+        print(f"Error laporan: {e}")
+        return []
+    finally:
+        db.close()

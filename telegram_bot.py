@@ -162,6 +162,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("laporan", laporan_command))
+    app.add_handler(CommandHandler("bintang", bintang_command))
     app.add_handler(CommandHandler("kuis", kuis_command))
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("help", help_command))
@@ -247,6 +248,33 @@ async def laporan_command(update, context):
         
     text += "\nTerus semangat mendampingi proses belajar anak! 😊"
     await update.message.reply_markdown(text)
+
+
+async def bintang_command(update, context):
+    import database
+    user_id = update.effective_user.id
+    progress = database.get_user_progress(user_id)
+    
+    if not progress:
+        await update.message.reply_text("Kamu belum punya bintang, nih. Yuk mulai mengobrol dan jawab kuis dari Kak Moana untuk mengumpulkan bintang! 🌟")
+        return
+        
+    total_interaksi = sum([count for subject, count, last_time in progress])
+    total_bintang = total_interaksi // 5  # 1 Bintang untuk setiap 5 interaksi
+    
+    if total_bintang == 0:
+        butuh = 5 - (total_interaksi % 5)
+        await update.message.reply_text(f"Semangat! Kamu butuh {butuh} interaksi lagi untuk mendapatkan Bintang pertamamu! 🌟")
+        return
+        
+    teks_bintang = "⭐" * total_bintang
+    
+    pesan = f"🎉 *Koleksi Bintang Keaktifanmu!* 🎉\n\n"
+    pesan += f"Luar biasa! Kamu sudah belajar sangat rajin dan berhasil mengumpulkan:\n"
+    pesan += f"{teks_bintang} ({total_bintang} Bintang)\n\n"
+    pesan += "Terus semangat belajar bersama Kak Moana ya! 🚀"
+    
+    await update.message.reply_markdown(pesan)
 
 
 if __name__ == "__main__":

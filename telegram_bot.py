@@ -189,24 +189,38 @@ def main():
 
 
 
+
+
+
+
+
 async def kuis_command(update, context):
-    user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.first_name
-    subject = context.user_data.get("subject", "Matematika")
-    prompt = f"Buatkan 1 soal latihan singkat dan menarik tingkat sekolah dasar untuk mata pelajaran {subject}. Berikan pilihan ganda (A, B, C, D) dan jangan berikan kunci jawabannya dulu."
+    from subjects import get_subject
+    from llm import get_ai_reply
+
+    subject_key = context.user_data.get("subject")
+    if not subject_key:
+        await update.message.reply_text("Pilih dulu mau belajar apa ya, Adik! Ketik /start atau /menu.")
+        return
+
+    subject = get_subject(subject_key)
+    subject_name = subject["name"]
+    system_prompt = subject["system_prompt"]
+    
+    prompt = f"Buatkan 1 soal latihan singkat dan menarik tingkat sekolah dasar untuk mata pelajaran {subject_name}. Berikan pilihan ganda (A, B, C, D) dan jangan berikan kunci jawabannya dulu."
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
     try:
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=300,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        question_text = response.content[0].text
+        # Menggunakan fungsi LLM yang sama dengan fitur chat utama! (Tanpa history agar fokus ke soal)
+        question_text = get_ai_reply(subject_key, system_prompt, [], prompt)
+        
         context.user_data["in_quiz"] = True
         context.user_data["quiz_question"] = question_text
-        await update.message.reply_text(f"📝 **Kuis Singkat ({subject})**\n\n" + question_text)
+        
+        await update.message.reply_text(f"📝 *Kuis Singkat ({subject_name})*\n\n" + question_text)
     except Exception as e:
+        print(f"Error kuis: {e}")
         await update.message.reply_text("Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!")
 
 

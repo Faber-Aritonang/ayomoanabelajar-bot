@@ -6,6 +6,7 @@ Kalau nanti mau ganti model, cukup ubah MODEL_NAME di sini.
 """
 
 import os
+import re
 from pathlib import Path
 
 from anthropic import Anthropic, APIError, APIConnectionError
@@ -15,6 +16,26 @@ MAX_TOKENS = 500
 MATERIALS_DIR = Path(__file__).parent / "materials"
 
 _client = None
+
+
+def _strip_markdown(text: str) -> str:
+    """
+    Bersihkan sisa-sisa simbol Markdown dari balasan, untuk jaga-jaga kalau
+    Claude sesekali masih menulis **tebal**, # judul, atau --- garis pemisah
+    meski sudah diinstruksikan untuk tidak memakainya. Bot mengirim pesan
+    sebagai teks polos (tanpa parse_mode), jadi simbol mentah akan terlihat
+    berantakan kalau tidak dibersihkan di sini. Ini jaring pengaman di level
+    kode, bukan cuma mengandalkan kepatuhan model terhadap system prompt.
+    """
+    text = re.sub(r"(?m)^#{1,6}\s*", "", text)              # # Judul -> Judul
+    text = re.sub(r"(?m)^\s*[-*_]{3,}\s*$", "", text)        # --- -> (hilang)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)              # **tebal** -> tebal
+    text = re.sub(r"__(.+?)__", r"\1", text)                  # __tebal__ -> tebal
+    text = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", text)  # *miring* -> miring
+    text = re.sub(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)", r"\1", text)    # _miring_ -> miring
+    text = re.sub(r"`([^`]+)`", r"\1", text)                  # `kode` -> kode
+    text = re.sub(r"\n{3,}", "\n\n", text)                    # rapikan baris kosong berlebih
+    return text.strip()
 
 
 def _load_material(subject_key: str) -> str:
@@ -92,6 +113,7 @@ def get_ai_reply(subject_key: str, system_prompt: str, history: list, user_messa
         # response.content adalah list block; ambil semua block teks
         text_parts = [block.text for block in response.content if block.type == "text"]
         reply = "\n".join(text_parts).strip()
+        reply = _strip_markdown(reply)
         return reply or "Hmm, Kak Moana belum bisa jawab itu. Coba tanya dengan cara lain, ya! 😊"
 
     except APIConnectionError:

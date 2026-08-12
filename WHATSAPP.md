@@ -23,7 +23,7 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 | `menu` atau `mulai` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
 | `1` … `6` | Pilih pelajaran (Matematika, Bahasa Indonesia, dll.) |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
-| `kuis` atau `soal` | Kuis adaptif pelajaran aktif (naik/turun level sesuai kemampuan) |
+| `kuis` atau `soal` | Kuis adaptif pelajaran aktif — 5 soal, **benar +10 poin / salah 0**, skor tersimpan |
 | `bintang` | Lihat koleksi bintang keaktifan ⭐ |
 | `laporan` | Rekap keaktifan belajar (untuk orang tua) |
 | `rapor` | Rapor evaluasi AI mingguan (untuk orang tua) |
@@ -61,9 +61,12 @@ Cek status: buka `http://localhost:10000/status` di browser.
 - Render **free tier mematikan service setelah ~15 menit idle** (spin-down).
   Saat mati, koneksi WhatsApp terputus dan **sesi tersimpan di file DB bisa
   hilang** karena filesystem free tier tidak persisten antar-restart.
-- Karena itu, untuk produksi yang stabil disarankan:
+- **Keep-alive bawaan (sejak v1.4.1):** bot mem-ping `/health` sendiri tiap
+  10 menit lewat `RENDER_EXTERNAL_URL` (diisi otomatis Render), jadi service
+  tidak lagi tertidur setelah 15 menit idle. Ini gratis dan tanpa setup.
+- Untuk perlindungan ekstra disarankan:
   - **UptimeRobot** (gratis) di-set ping ke `https://app-kamu.onrender.com/health`
-    setiap ~5 menit agar service tidak pernah idle; **dan**
+    setiap ~5 menit (lapisan kedua keep-alive); **dan**
   - pakai **plan berbayar** (Starter, ~$7/bln) agar filesystem persisten dan
     sesi WhatsApp tidak hilang saat redeploy.
 - Tanpa plan berbayar, kamu mungkin harus **scan ulang QR setelah setiap

@@ -7,7 +7,11 @@
 #
 # Catatan: WhatsApp bot memakai library tidak resmi (Neonize). File sesi
 # wa_session.db tersimpan di filesystem service — untuk 24/7 yang stabil
-# gunakan plan berbayar (filesystem persisten) + UptimeRobot ke /health.
+# gunakan plan berbayar (filesystem persisten).
+#
+# Keep-alive: sejak v1.4.1 bot mem-ping /health sendiri tiap 10 menit
+# (membaca RENDER_EXTERNAL_URL otomatis), sehingga service free tier tidak
+# tertidur setelah 15 menit idle. Tambahan opsional: UptimeRobot ke /health.
 
 services:
   # ---------- Bot WhatsApp ----------
@@ -28,7 +32,7 @@ services:
       - key: DATABASE_URL
         sync: false          # opsional: PostgreSQL yang dipakai bot Telegram
       - key: RENDER_EXTERNAL_URL
-        sync: false          # diisi otomatis oleh Render
+        sync: false          # diisi otomatis oleh Render (dipakai keep-alive)
 
   # ---------- Bot Telegram ----------
   # Catatan: PTB webhook tidak punya endpoint /health, jadi healthCheckPath

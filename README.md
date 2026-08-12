@@ -1,15 +1,15 @@
 # 🌟 Ayo, Moana Belajar! - Telegram & WhatsApp AI Tutor
 
-![Version](https://img.shields.io/badge/version-v1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-v1.4.1-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Telegram%20%26%20WhatsApp-success.svg)
 
 Bot edukatif berbasis AI yang dirancang untuk menjadi pendamping belajar anak SD yang interaktif, adaptif, dan terukur. Proyek ini dibangun dengan mengedepankan efisiensi alur belajar dan pencatatan data kemajuan siswa secara *real-time*. Tersedia di **dua platform**: **Telegram** dan **WhatsApp** — keduanya berbagi materi, prompt guru, dan database riwayat belajar yang sama.
 
-## ✨ Fitur Utama Saat Ini (v1.4.0)
+## ✨ Fitur Utama Saat Ini (v1.4.1)
 
 - 🤖 **AI Chat Tutor**: Pendamping belajar interaktif dengan *prompt* khusus untuk berbagai mata pelajaran (Matematika, Bahasa Indonesia, Bahasa Inggris, IPAS, Pancasila, Agama Kristen).
-- 📈 **Kuis Adaptif (Smart Evaluation)**: Sistem evaluasi cerdas yang membaca riwayat obrolan siswa untuk menyesuaikan tingkat kesulitan soal secara otomatis (menghindari kebosanan atau frustrasi pada anak).
+- 📈 **Kuis Adaptif Berpoin (Smart Evaluation)**: Sistem evaluasi cerdas yang membaca riwayat obrolan siswa untuk menyesuaikan tingkat kesulitan soal secara otomatis. Setiap jawaban benar **+10 poin**, salah **0 poin**; skor tiap sesi tersimpan di database untuk dipantau orang tua.
 - ⭐ **Sistem Gamifikasi**: Perintah `/bintang` (Telegram) atau `bintang` (WhatsApp) untuk memberikan *reward* visual berdasarkan tingkat keaktifan guna memotivasi konsistensi belajar anak.
 - 📊 **Laporan Kemajuan Terstruktur**: Fitur `/laporan` (Telegram) atau `laporan` (WhatsApp) menggunakan integrasi ORM untuk menyajikan rekapitulasi data aktivitas belajar secara instan bagi pemantauan orang tua.
 - 📑 **Rapor AI Naratif**: Fitur `/rapor` (Telegram) atau `rapor` (WhatsApp) yang membaca seluruh riwayat percakapan anak lintas pelajaran untuk menyusun evaluasi komprehensif yang spesifik bagi orang tua.
@@ -60,11 +60,16 @@ Login pertama kali: scan QR dari `http://localhost:10000/qr` (atau Pairing Code 
 python3 test_whatsapp_bot.py
 ```
 
-Skrip ini mensimulasikan 35+ skenario pesan masuk (menu, pilih pelajaran, chat, kuis, bintang, laporan, rapor, reset, keamanan `/qr`, dll.) tanpa memerlukan koneksi WhatsApp atau biaya API.
+Skrip ini mensimulasikan 40+ skenario pesan masuk (menu, pilih pelajaran, chat, kuis adaptif dengan evaluasi jawaban benar/salah, bintang, laporan, rapor, reset, keamanan `/qr`, dll.) tanpa memerlukan koneksi WhatsApp atau biaya API. Pakai database uji terpisah, jadi data asli tidak tersentuh.
 
 ## 📝 Riwayat Pembaruan (Changelog)
 
-- **[v1.4.0] - Pembaruan Terkini**
+- **[v1.4.1] - Pembaruan Terkini**
+  - **Kuis Adaptif Berpoin**: jawaban kuis kini dievaluasi otomatis (benar **+10 poin**, salah **0 poin**), skor disimpan ke `quiz_scores`, dan kunci jawaban disembunyikan dari anak (logika bersama di `quiz.py` untuk Telegram & WhatsApp).
+  - Menghapus handler `/menu` ganda di `telegram_bot.py`.
+  - Menyamakan versi Python (`runtime.txt` → 3.12) dan menghapus file lama `bot_database.db`.
+  - **Stabilisasi deploy**: keep-alive self-ping di `whatsapp_bot.py` agar service Render free tier tidak tertidur (idle 15 menit).
+- **[v1.4.0]**
   - Merilis **Bot WhatsApp** (`whatsapp_bot.py`) dengan fitur yang sama dengan Telegram.
   - Menambahkan skrip pengujian otomatis `test_whatsapp_bot.py`.
   - Dokumentasi deploy WhatsApp ke Render (`WHATSAPP.md`).

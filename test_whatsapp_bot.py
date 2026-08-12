@@ -14,11 +14,22 @@ Cara jalankan:
 Kode keluar: 0 = semua lulus, 1 = ada yang gagal.
 """
 
+import os
 import sys
+
+# Pakai database test terpisah supaya data asli pengguna tidak tercemar.
+# (Harus diset SEBELUM import database/whatsapp_bot.)
+TEST_DB = "test_whatsapp.db"
+if os.path.exists(TEST_DB):
+    os.remove(TEST_DB)
+os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
+import database
+import quiz
 import whatsapp_bot as wb
 from neonize.proto.Neonize_pb2 import Message as MessageEv
 from neonize.utils import build_jid
@@ -56,13 +67,22 @@ def fresh_user():
 
 
 def fake_ai(subject_key, system_prompt, history, user_message):
-    """Ganti get_ai_reply agar tes tidak memanggil API berbayar."""
+    """Ganti get_ai_reply agar tes tidak memanggil API berbayar.
+
+    Kalau prompt meminta KUNCI (pembuatan soal kuis), kembalikan soal dengan
+    kunci jawaban; selain itu balas teks biasa.
+    """
+    if "KUNCI: X" in (user_message or ""):
+        return "Berapa hasil 2 + 2?\nA. 3\nB. 4\nC. 5\nD. 6\nKUNCI: B"
     return f"AI uji: {user_message}"
 
 
 def main():
+    database.init_db()  # buat tabel di database test
     client = FakeClient()
+    # Ganti get_ai_reply di SEMUA modul yang mengimpornya (whatsapp_bot & quiz).
     wb.get_ai_reply = fake_ai
+    quiz.get_ai_reply = fake_ai
     wb._current_client = client
 
     results = []
@@ -74,13 +94,15 @@ def main():
             ok = expect is None
             results.append((name, ok, "OK (diabaikan, sesuai desain)" if ok else f"harus mengirim pesan: {expect}"))
             return
-        reply = client.sent[-1][1]
+        # Kuis bisa mengirim >1 pesan (feedback + soal berikutnya); cek SEMUA.
+        replies = [msg for _, msg in client.sent]
+        joined = "\n---\n".join(replies)
         ok = True
-        detail = "OK"
-        if expect and expect not in reply:
+        detail = f"OK ({len(replies)} pesan)"
+        if expect and expect not in joined:
             ok = False
-            detail = f"harus mengandung {expect!r}, ternyata: {reply[:70]!r}"
-        if ok and expect_absent and expect_absent in reply:
+            detail = f"harus mengandung {expect!r}, ternyata: {joined[:100]!r}"
+        if ok and expect_absent and expect_absent in joined:
             ok = False
             detail = f"tidak boleh mengandung {expect_absent!r}"
         results.append((name, ok, detail))
@@ -101,8 +123,18 @@ def main():
     # Chat bebas & kuis: butuh pelajaran aktif dulu.
     p = fresh_user(); belajar(p)
     run("chat bebas", make_event("kenapa langit biru?", phone=p), expect="AI uji: kenapa langit biru?")
+
+    # --- Kuis adaptif dengan penilaian jawaban ---
+    # MAX_QUESTIONS = 5; jawaban tanpa huruf tidak dihitung sebagai soal.
     p = fresh_user(); belajar(p)
-    run("kuis", make_event("kuis", phone=p), expect="Kuis Adaptif")
+    run("kuis mulai", make_event("kuis", phone=p), expect="Kuis Adaptif")
+    run("kuis jawab benar (+10)", make_event("B", phone=p), expect="BENAR")
+    run("kuis jawab salah (+0)", make_event("A", phone=p), expect="Belum tepat")
+    run("kuis jawab teks tanpa huruf", make_event("lima belas", phone=p), expect="belum paham jawabanmu")
+    run("kuis jawab benar lagi", make_event("jawabannya B", phone=p), expect="BENAR")
+    run("kuis jawab benar (soal ke-4)", make_event("B", phone=p), expect="BENAR")
+    run("kuis selesai (soal ke-5)", make_event("A", phone=p), expect="Kuis selesai")
+    run("kuis selesai -> chat biasa lagi", make_event("A", phone=p), expect="AI uji: A")
 
     # Bintang/laporan/rapor: tanpa data -> pesan penyemangat (perilaku benar).
     run("bintang (tanpa data)", make_event("bintang", phone=fresh_user()), expect="belum punya bintang")
@@ -171,9 +203,21 @@ def main():
     print(f"Total: {total} | Lulus: {total - failed} | Gagal: {failed}")
     if failed:
         print("ADA YANG GAGAL — periksa detail di atas.")
-        return 1
-    print("SEMUA TES LULUS! 🎉")
-    return 0
+    else:
+        print("SEMUA TES LULUS! 🎉")
+
+    # Bersihkan database test (data uji tidak ikut ke database asli).
+    try:
+        database.SessionLocal.remove()
+    except Exception:
+        pass
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
+    for suffix in ("-wal", "-shm"):
+        if os.path.exists(TEST_DB + suffix):
+            os.remove(TEST_DB + suffix)
+
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

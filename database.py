@@ -137,3 +137,26 @@ def get_all_recent_messages(user_id, limit=20):
         return [{"subject": subject, "role": role, "content": message} for subject, role, message in rows]
     finally:
         db.close()
+
+
+def get_quiz_summary(user_id):
+    """Rekap skor kuis per mata pelajaran: [(subject, total_poin, total_soal)]"""
+    from sqlalchemy import func
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(
+                QuizScoreModel.subject,
+                func.sum(QuizScoreModel.score),
+                func.sum(QuizScoreModel.total_questions),
+            )
+            .filter(QuizScoreModel.user_id == str(user_id))
+            .group_by(QuizScoreModel.subject)
+            .all()
+        )
+        return rows
+    except Exception as e:
+        print(f"Error rekap kuis: {e}")
+        return []
+    finally:
+        db.close()

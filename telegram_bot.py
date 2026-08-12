@@ -25,6 +25,7 @@ from telegram.ext import (
 )
 
 import database
+import quiz
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
 
@@ -50,18 +51,13 @@ def build_subject_keyboard() -> InlineKeyboardMarkup:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("subject", None)
+    context.user_data.pop("quiz", None)  # keluar dari kuis yang sedang berjalan
     text = (
         f"Halo, Adik! 👋 Selamat datang di *{BOT_NAME}*!\n\n"
         "Aku Kak Moana, teman belajar untuk kelas 3 SD. 😊\n"
         "Yuk, pilih dulu mau belajar apa hari ini:"
     )
     await update.message.reply_markdown(text, reply_markup=build_subject_keyboard())
-
-
-async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Mau ganti pelajaran apa, Adik?", reply_markup=build_subject_keyboard()
-    )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,6 +82,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Reset hanya menghapus konteks 'ingatan' percakapan (riwayat tetap
     # tersimpan di database untuk log), jadi obrolan berikutnya mulai segar.
     context.user_data["reset_marker"] = True
+    context.user_data.pop("quiz", None)  # keluar dari kuis yang sedang berjalan
     subject_name = get_subject(subject_key)["name"]
     await update.message.reply_text(
         f"Oke, obrolan {subject_name} kita mulai dari awal lagi ya! 🔄"
@@ -104,6 +101,7 @@ async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["subject"] = subject_key
     context.user_data["reset_marker"] = True  # mulai konteks segar tiap ganti pelajaran
+    context.user_data.pop("quiz", None)  # pelajaran baru = kuis baru
 
     await query.edit_message_text(
         f"{subject['emoji']} Oke! Sekarang kita belajar *{subject['name']}* ya.\n"
@@ -129,6 +127,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     subject = get_subject(subject_key)
 
+    # Kalau kuis sedang berjalan, pesan ini adalah JAWABAN kuis.
+    if context.user_data.get("quiz"):
+        await handle_quiz_answer(update, context, user_text, subject_key, subject)
+        return
+
     # Kalau baru saja /reset atau baru pilih subject, jangan bawa histori lama
     if context.user_data.pop("reset_marker", False):
         history = []
@@ -143,6 +146,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     database.save_message(user.id, user.username or user.first_name, subject_key, "assistant", reply)
 
     await update.message.reply_text(reply)
+
+
+async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, answer_text, subject_key, subject):
+    """Proses jawaban anak untuk kuis yang sedang berjalan (Telegram)."""
+    user = update.effective_user
+    username = user.username or user.first_name
+
+    feedback, need_next, summary = quiz.answer_quiz(context.user_data, answer_text)
+
+    if summary:  # sesi selesai — simpan skor ke database
+        database.save_quiz_score(user.id, username, subject_key, summary["score"], summary["total"])
+
+    database.save_message(user.id, username, subject_key, "user", answer_text)
+    database.save_message(user.id, username, subject_key, "assistant", feedback)
+    await update.message.reply_markdown(feedback)
+
+    if need_next == "NEXT":
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        history = database.get_recent_messages(user.id, subject_key, limit=6)
+        question_text = quiz.start_quiz(context.user_data, subject_key, subject, history)
+        if question_text:
+            database.save_message(user.id, username, subject_key, "assistant", question_text)
+            await update.message.reply_markdown(f"📝 *Kuis Adaptif ({subject['name']})*\n\n{question_text}")
+        else:
+            await update.message.reply_text(
+                "Maaf, Kak Moana sedang kesulitan menyiapkan soal berikutnya. Coba lagi ya!"
+            )
 
 
 def main():
@@ -166,7 +196,6 @@ def main():
     app.add_handler(CommandHandler("rapor", rapor_command))
     app.add_handler(CommandHandler("menu", menu_command))
     app.add_handler(CommandHandler("kuis", kuis_command))
-    app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
@@ -199,10 +228,6 @@ def main():
 
 
 async def kuis_command(update, context):
-    from subjects import get_subject
-    from llm import get_ai_reply
-    import database
-
     user_id = update.effective_user.id
     subject_key = context.user_data.get("subject")
     if not subject_key:
@@ -211,28 +236,25 @@ async def kuis_command(update, context):
 
     subject = get_subject(subject_key)
     subject_name = subject["name"]
-    system_prompt = subject["system_prompt"]
-    
-    history = database.get_recent_messages(user_id, subject_key, limit=6)
-    
-    # Menggunakan triple quotes untuk string multi-baris agar tidak error
-    prompt = f"""Buatkan 1 soal latihan untuk mata pelajaran {subject_name}. Berikan pilihan ganda (A, B, C, D) tanpa kunci jawaban di awal.
-    
-INSTRUKSI ADAPTIF PENTING: Evaluasi pemahaman anak dari riwayat obrolan yang diberikan. Jika anak sering salah atau bingung, berikan soal yang lebih dasar dan mudah. Jika anak menjawab dengan cepat dan benar, berikan soal yang 1 tingkat lebih sulit (Level Up). Sesuaikan nada bicaramu agar selalu menyemangati!"""
-    
+
+    # Mulai sesi kuis baru (skor direset). Soal sebelumnya dibuang.
+    context.user_data.pop("quiz", None)
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    
-    try:
-        question_text = get_ai_reply(subject_key, system_prompt, history, prompt)
-        context.user_data["in_quiz"] = True
-        
-        # Simpan soal kuis ke database agar Kak Moana ingat apa yang baru saja ia tanyakan
-        username = update.effective_user.username or update.effective_user.first_name
-        database.save_message(user_id, username, subject_key, "assistant", question_text)
-        await update.message.reply_text(f"📝 *Kuis Adaptif ({subject_name})*\n\n" + question_text)
-    except Exception as e:
-        print(f"Error kuis: {e}")
-        await update.message.reply_text("Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!")
+
+    history = database.get_recent_messages(user_id, subject_key, limit=6)
+    question_text = quiz.start_quiz(context.user_data, subject_key, subject, history)
+
+    if not question_text:
+        await update.message.reply_text(
+            "Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!"
+        )
+        return
+
+    # Simpan soal ke database agar Kak Moana ingat apa yang baru saja ditanyakan
+    username = update.effective_user.username or update.effective_user.first_name
+    database.save_message(user_id, username, subject_key, "assistant", question_text)
+    await update.message.reply_text(f"📝 *Kuis Adaptif ({subject_name})*\n\n{question_text}")
 
 
 async def laporan_command(update, context):
@@ -247,7 +269,13 @@ async def laporan_command(update, context):
     text = "📊 *Laporan Kemajuan Belajar Siswa*\n\n"
     for subject, count, last_time in progress:
         text += f"• *{subject.capitalize()}*: {count} interaksi obrolan/soal\n"
-        
+
+    quiz_rows = database.get_quiz_summary(user_id)
+    if quiz_rows:
+        text += "\n🎯 *Skor Kuis:*\n"
+        for subject, total_poin, total_soal in quiz_rows:
+            text += f"• *{subject.capitalize()}*: {total_poin} poin dari {total_soal} soal\n"
+
     text += "\nTerus semangat mendampingi proses belajar anak! 😊"
     await update.message.reply_markdown(text)
 

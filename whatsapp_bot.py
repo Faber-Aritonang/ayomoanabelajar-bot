@@ -34,12 +34,15 @@ import json
 import logging
 import os
 import threading
+import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from io import BytesIO
 
 from dotenv import load_dotenv
 
 import database
+import quiz
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
 
@@ -74,6 +77,13 @@ _current_client: NewClient | None = None
 # dibuka dengan ?token=<nilai>. Berguna kalau bot di-deploy di URL publik
 # (Render) supaya orang lain tidak bisa scan QR dan membajak sesi WhatsApp.
 QR_TOKEN = os.getenv("WA_QR_TOKEN", "").strip()
+
+# Keep-alive: Render free tier mematikan service setelah ~15 menit tanpa
+# request masuk, yang memutus koneksi WhatsApp. Thread ini mem-ping URL
+# publik service sendiri (/health) tiap 10 menit supaya service tetap hidup.
+# RENDER_EXTERNAL_URL diisi otomatis oleh Render; kosong saat jalan lokal.
+KEEP_ALIVE_INTERVAL = 600  # detik
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
 
 
 # --------------------------------------------------------------------------
@@ -159,6 +169,7 @@ def _send(client: NewClient, ev: MessageEv, text: str):
 
 def handle_start(client, ev, phone):
     _state(phone).pop("subject", None)
+    _state(phone).pop("quiz", None)  # keluar dari kuis yang sedang berjalan
     _send(client, ev, _subject_menu_text())
 
 
@@ -187,6 +198,7 @@ def handle_reset(client, ev, phone):
         _send(client, ev, "Belum ada pelajaran yang dipilih. Ketik *menu* dulu ya!")
         return
     st["reset_marker"] = True
+    st.pop("quiz", None)  # keluar dari kuis yang sedang berjalan
     subject_name = get_subject(subject_key)["name"]
     _send(client, ev, f"Oke, obrolan {subject_name} kita mulai dari awal lagi ya! 🔄")
 
@@ -197,6 +209,7 @@ def handle_pick_subject(client, ev, phone, number):
     st = _state(phone)
     st["subject"] = key
     st["reset_marker"] = True  # mulai konteks segar tiap ganti pelajaran
+    st.pop("quiz", None)  # pelajaran baru = kuis baru
     _send(
         client,
         ev,
@@ -218,6 +231,11 @@ def handle_chat(client, ev, phone, text):
         return
 
     subject = get_subject(subject_key)
+
+    # Kalau kuis sedang berjalan, pesan ini adalah JAWABAN kuis.
+    if st.get("quiz"):
+        handle_quiz_answer(client, ev, phone, text, subject_key, subject)
+        return
 
     if st.pop("reset_marker", False):
         history = []
@@ -241,29 +259,42 @@ def handle_quiz(client, ev, phone):
 
     subject = get_subject(subject_key)
     subject_name = subject["name"]
-    system_prompt = subject["system_prompt"]
+
+    # Mulai sesi kuis baru (skor direset).
+    st.pop("quiz", None)
 
     history = database.get_recent_messages(phone, subject_key, limit=6)
+    question_text = quiz.start_quiz(st, subject_key, subject, history)
 
-    prompt = (
-        f"Buatkan 1 soal latihan untuk mata pelajaran {subject_name}. Berikan "
-        "pilihan ganda (A, B, C, D) tanpa kunci jawaban di awal.\n\n"
-        "INSTRUKSI ADAPTIF PENTING: Evaluasi pemahaman anak dari riwayat "
-        "obrolan yang diberikan. Jika anak sering salah atau bingung, berikan "
-        "soal yang lebih dasar dan mudah. Jika anak menjawab dengan cepat dan "
-        "benar, berikan soal yang 1 tingkat lebih sulit (Level Up). Sesuaikan "
-        "nada bicaramu agar selalu menyemangati!"
-    )
-
-    try:
-        question_text = get_ai_reply(subject_key, system_prompt, history, prompt)
-        st["in_quiz"] = True
-        username = phone
-        database.save_message(phone, username, subject_key, "assistant", question_text)
-        _send(client, ev, f"📝 *Kuis Adaptif ({subject_name})*\n\n{question_text}")
-    except Exception as e:
-        logger.error("Error kuis: %s", e)
+    if not question_text:
         _send(client, ev, "Maaf, Kak Moana sedang kesulitan menyiapkan kuis saat ini. Coba lagi ya!")
+        return
+
+    database.save_message(phone, phone, subject_key, "assistant", question_text)
+    _send(client, ev, f"📝 *Kuis Adaptif ({subject_name})*\n\n{question_text}")
+
+
+def handle_quiz_answer(client, ev, phone, answer_text, subject_key, subject):
+    """Proses jawaban anak untuk kuis yang sedang berjalan (WhatsApp)."""
+    st = _state(phone)
+
+    feedback, need_next, summary = quiz.answer_quiz(st, answer_text)
+
+    if summary:  # sesi selesai — simpan skor ke database
+        database.save_quiz_score(phone, phone, subject_key, summary["score"], summary["total"])
+
+    database.save_message(phone, phone, subject_key, "user", answer_text)
+    database.save_message(phone, phone, subject_key, "assistant", feedback)
+    _send(client, ev, feedback)
+
+    if need_next == "NEXT":
+        history = database.get_recent_messages(phone, subject_key, limit=6)
+        question_text = quiz.start_quiz(st, subject_key, subject, history)
+        if question_text:
+            database.save_message(phone, phone, subject_key, "assistant", question_text)
+            _send(client, ev, f"📝 *Kuis Adaptif ({subject['name']})*\n\n{question_text}")
+        else:
+            _send(client, ev, "Maaf, Kak Moana sedang kesulitan menyiapkan soal berikutnya. Coba lagi ya!")
 
 
 def handle_stars(client, ev, phone):
@@ -314,6 +345,13 @@ def handle_report(client, ev, phone):
     text = "📊 *Laporan Kemajuan Belajar Siswa*\n\n"
     for subject, count, _ in progress:
         text += f"• *{subject.capitalize()}*: {count} interaksi obrolan/soal\n"
+
+    quiz_rows = database.get_quiz_summary(phone)
+    if quiz_rows:
+        text += "\n🎯 *Skor Kuis:*\n"
+        for subject, total_poin, total_soal in quiz_rows:
+            text += f"• *{subject.capitalize()}*: {total_poin} poin dari {total_soal} soal\n"
+
     text += "\nTerus semangat mendampingi proses belajar anak! 😊"
     _send(client, ev, text)
 
@@ -529,6 +567,25 @@ def start_http_server():
     server.serve_forever()
 
 
+def keep_alive_loop():
+    """Ping /health sendiri tiap beberapa menit agar service Render tidak tidur.
+
+    Hanya aktif kalau RENDER_EXTERNAL_URL tersedia (dipakai di Render); saat
+    jalan lokal variabel ini kosong dan loop langsung berhenti.
+    """
+    if not RENDER_EXTERNAL_URL:
+        logger.info("Keep-alive nonaktif (RENDER_EXTERNAL_URL kosong — bukan di Render).")
+        return
+    logger.info("Keep-alive aktif: ping %s/health tiap %s detik.", RENDER_EXTERNAL_URL, KEEP_ALIVE_INTERVAL)
+    while True:
+        time.sleep(KEEP_ALIVE_INTERVAL)
+        try:
+            with urllib.request.urlopen(f"{RENDER_EXTERNAL_URL}/health", timeout=10) as resp:
+                logger.info("Keep-alive ping -> HTTP %s", resp.status)
+        except Exception as e:
+            logger.warning("Keep-alive ping gagal: %s", e)
+
+
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
@@ -542,6 +599,9 @@ def main():
     # HTTP server jalan di thread terpisah (juga memenuhi syarat port Render).
     http_thread = threading.Thread(target=start_http_server, daemon=True)
     http_thread.start()
+
+    # Keep-alive agar service Render free tier tidak tertidur (idle 15 menit).
+    threading.Thread(target=keep_alive_loop, daemon=True).start()
 
     # Sesi tersimpan otomatis di SESSION_DB — restart tidak perlu scan ulang
     # (selama file DB masih ada, lihat WHATSAPP.md untuk catatan Render).

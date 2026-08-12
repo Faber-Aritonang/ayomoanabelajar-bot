@@ -121,3 +121,19 @@ def get_user_progress(user_id):
         return []
     finally:
         db.close()
+
+
+def get_all_recent_messages(user_id, limit=20):
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ConversationModel.subject, ConversationModel.role, ConversationModel.message)
+            .filter(ConversationModel.user_id == str(user_id))
+            .order_by(ConversationModel.id.desc())
+            .limit(limit)
+            .all()
+        )
+        rows.reverse()
+        return [{"subject": subject, "role": role, "content": message} for subject, role, message in rows]
+    finally:
+        db.close()

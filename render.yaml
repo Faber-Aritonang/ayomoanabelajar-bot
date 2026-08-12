@@ -1,0 +1,51 @@
+# render.yaml — Blueprint deploy Render untuk "Ayo, Moana Belajar!"
+#
+# Cara pakai:
+#   1. Push repo ini ke GitHub.
+#   2. Di dashboard Render: New > Blueprint, pilih repo ini.
+#   3. Isi env var di bawah (ANTHROPIC_API_KEY wajib).
+#
+# Catatan: WhatsApp bot memakai library tidak resmi (Neonize). File sesi
+# wa_session.db tersimpan di filesystem service — untuk 24/7 yang stabil
+# gunakan plan berbayar (filesystem persisten) + UptimeRobot ke /health.
+
+services:
+  # ---------- Bot WhatsApp ----------
+  - type: web
+    name: ayomoana-whatsapp
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 whatsapp_bot.py
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # isi manual di dashboard (secret)
+      - key: WA_SESSION_DB
+        value: wa_session.db
+      - key: WA_QR_TOKEN
+        sync: false          # isi manual: string acak panjang untuk melindungi /qr
+      - key: DATABASE_URL
+        sync: false          # opsional: PostgreSQL yang dipakai bot Telegram
+      - key: RENDER_EXTERNAL_URL
+        sync: false          # diisi otomatis oleh Render
+
+  # ---------- Bot Telegram ----------
+  # Catatan: PTB webhook tidak punya endpoint /health, jadi healthCheckPath
+  # tidak dipakai. Kalau bot Telegram SUDAH ter-deploy di Render, hapus blok
+  # ini dari render.yaml agar tidak membuat service duplikat.
+  - type: web
+    name: ayomoana-telegram
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 telegram_bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        sync: false

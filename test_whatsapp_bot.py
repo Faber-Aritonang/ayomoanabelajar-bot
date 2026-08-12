@@ -1,0 +1,180 @@
+"""
+test_whatsapp_bot.py
+=====================
+Tes offline untuk whatsapp_bot.py — TANPA perlu HP atau koneksi WhatsApp.
+
+Skrip ini menyimulasikan pesan WhatsApp masuk (event protobuf Neonize) dan
+memverifikasi bahwa semua perintah bot merespons dengan benar. Aman dijalankan
+kapan saja, bahkan saat bot tidak terhubung ke WhatsApp.
+
+Cara jalankan:
+    source venv/bin/activate
+    python3 test_whatsapp_bot.py
+
+Kode keluar: 0 = semua lulus, 1 = ada yang gagal.
+"""
+
+import sys
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import whatsapp_bot as wb
+from neonize.proto.Neonize_pb2 import Message as MessageEv
+from neonize.utils import build_jid
+
+PHONE = "6281234567890"  # nomor uji (bukan nomor asli)
+
+
+class FakeClient:
+    """Pengganti NewClient: tidak mengirim apa pun, hanya mencatat pesan."""
+
+    connected = False
+
+    def __init__(self):
+        self.sent = []
+
+    def send_message(self, to, msg):
+        self.sent.append((str(to.User), msg))
+
+
+def make_event(text, from_me=False, is_group=False, phone=PHONE):
+    """Bangun event pesan WhatsApp palsu berisi teks."""
+    ev = MessageEv()
+    ev.Info.MessageSource.Chat.CopyFrom(build_jid(phone, "s.whatsapp.net"))
+    ev.Info.MessageSource.Sender.CopyFrom(build_jid(phone, "s.whatsapp.net"))
+    ev.Info.MessageSource.IsFromMe = from_me
+    ev.Info.MessageSource.IsGroup = is_group
+    ev.Message.conversation = text
+    return ev
+
+
+def fresh_user():
+    """Nomor unik agar state pelajaran antar skenario tidak saling menimpa."""
+    fresh_user.counter = getattr(fresh_user, "counter", 0) + 1
+    return f"6281000000{fresh_user.counter:02d}"
+
+
+def fake_ai(subject_key, system_prompt, history, user_message):
+    """Ganti get_ai_reply agar tes tidak memanggil API berbayar."""
+    return f"AI uji: {user_message}"
+
+
+def main():
+    client = FakeClient()
+    wb.get_ai_reply = fake_ai
+    wb._current_client = client
+
+    results = []
+
+    def run(name, ev, expect=None, expect_absent=None):
+        client.sent.clear()
+        wb.on_message(client, ev)
+        if not client.sent:
+            ok = expect is None
+            results.append((name, ok, "OK (diabaikan, sesuai desain)" if ok else f"harus mengirim pesan: {expect}"))
+            return
+        reply = client.sent[-1][1]
+        ok = True
+        detail = "OK"
+        if expect and expect not in reply:
+            ok = False
+            detail = f"harus mengandung {expect!r}, ternyata: {reply[:70]!r}"
+        if ok and expect_absent and expect_absent in reply:
+            ok = False
+            detail = f"tidak boleh mengandung {expect_absent!r}"
+        results.append((name, ok, detail))
+
+    def belajar(phone):
+        """Skenario bantu: pilih pelajaran dulu untuk pengguna tertentu."""
+        run(f"(setup) pilih pelajaran {phone[-2:]}", make_event("1", phone=phone), expect="Matematika")
+
+    # --- Alur dasar (setiap skenario memakai nomor pengguna baru, supaya
+    # state pelajaran antar uji tidak saling memengaruhi) ---
+    run("chat tanpa pelajaran -> minta pilih", make_event("2+2 berapa?", phone=fresh_user()), expect="Pilih dulu")
+    run("perintah menu", make_event("menu", phone=fresh_user()), expect="memilih pelajaran")
+    run("perintah mulai (alias)", make_event("mulai", phone=fresh_user()), expect="memilih pelajaran")
+    run("pilih pelajaran 1", make_event("1", phone=fresh_user()), expect="Matematika")
+    run("pilih pelajaran 4", make_event("4", phone=fresh_user()), expect="IPAS")
+    run("pilih pelajaran 6", make_event("6", phone=fresh_user()), expect="Agama Kristen")
+
+    # Chat bebas & kuis: butuh pelajaran aktif dulu.
+    p = fresh_user(); belajar(p)
+    run("chat bebas", make_event("kenapa langit biru?", phone=p), expect="AI uji: kenapa langit biru?")
+    p = fresh_user(); belajar(p)
+    run("kuis", make_event("kuis", phone=p), expect="Kuis Adaptif")
+
+    # Bintang/laporan/rapor: tanpa data -> pesan penyemangat (perilaku benar).
+    run("bintang (tanpa data)", make_event("bintang", phone=fresh_user()), expect="belum punya bintang")
+    run("laporan (tanpa data)", make_event("laporan", phone=fresh_user()), expect="Belum ada riwayat")
+    run("rapor (data kurang)", make_event("rapor", phone=fresh_user()), expect="belum cukup")
+
+    p = fresh_user(); belajar(p)
+    run("reset", make_event("reset", phone=p), expect="awal lagi")
+    run("help", make_event("help", phone=fresh_user()), expect="Perintah")
+    run("bantuan (alias)", make_event("bantuan", phone=fresh_user()), expect="Perintah")
+
+    # --- Batas & perilaku khusus ---
+    run("pesan dari diri sendiri diabaikan", make_event("menu", from_me=True, phone=fresh_user()), expect=None)
+    run("pesan grup diabaikan", make_event("menu", is_group=True, phone=fresh_user()), expect=None)
+    run("pesan kosong", make_event("", phone=fresh_user()), expect="belum bisa baca")
+    p = fresh_user(); belajar(p)
+    run("angka 7 (di luar daftar) -> chat", make_event("7", phone=p), expect="AI uji: 7")
+
+    # Angka saat pelajaran aktif harus jadi chat, bukan ganti pelajaran.
+    p = fresh_user(); belajar(p)
+    run("angka saat pelajaran aktif -> chat", make_event("5", phone=p), expect="AI uji: 5")
+
+    # --- Parser perintah langsung ---
+    parse_cases = [
+        ("menu", ("menu", None)),
+        ("/menu", ("menu", None)),
+        ("kuis", ("kuis", None)),
+        ("1", ("pilih_subject", 1)),
+        ("6", ("pilih_subject", 6)),
+        ("7", ("chat", "7")),
+        ("2+2 berapa?", ("chat", "2+2 berapa?")),
+    ]
+    for raw, expected in parse_cases:
+        got = wb.parse_command(raw, subject_active=False)
+        ok = got == expected
+        results.append((f"parse({raw!r})", ok, "OK" if ok else f"harus {expected}, ternyata {got}"))
+
+    # --- Keamanan halaman /qr ---
+    handler = wb.BotHTTPHandler.__new__(wb.BotHTTPHandler)
+    handler._is_connected = lambda: False
+    wb.QR_TOKEN = "rahasia"
+    for path, expected in [("/qr", False), ("/qr?token=salah", False), ("/qr?token=rahasia", True)]:
+        handler.path = path
+        got = wb.BotHTTPHandler._qr_allowed(handler)
+        ok = got == expected
+        results.append((f"qr {path} (token={wb.QR_TOKEN!r})", ok, "OK" if ok else f"harus {expected}, ternyata {got}"))
+    handler._is_connected = lambda: True
+    handler.path = "/qr?token=rahasia"
+    got = wb.BotHTTPHandler._qr_allowed(handler)
+    results.append(("qr ditolak setelah login", got is False, "OK" if got is False else "harus False"))
+
+    # --- Laporan hasil ---
+    print("=" * 60)
+    print("HASIL TES OFFLINE BOT WHATSAPP")
+    print("=" * 60)
+    failed = 0
+    for name, ok, detail in results:
+        mark = "PASS" if ok else "FAIL"
+        if not ok:
+            failed += 1
+        print(f"  [{mark}] {name}")
+        if not ok:
+            print(f"         -> {detail}")
+    print("=" * 60)
+    total = len(results)
+    print(f"Total: {total} | Lulus: {total - failed} | Gagal: {failed}")
+    if failed:
+        print("ADA YANG GAGAL — periksa detail di atas.")
+        return 1
+    print("SEMUA TES LULUS! 🎉")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

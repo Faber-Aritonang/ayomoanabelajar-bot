@@ -20,3 +20,15 @@ SQLAlchemy==2.0.31
 tornado==6.5.7
 typing-inspection==0.4.2
 typing_extensions==4.16.0
+
+# --- WhatsApp bot (Neonize / whatsmeow) ---
+# Wajib untuk whatsapp_bot.py. Prebuilt wheel tersedia untuk linux x86_64,
+# jadi tidak butuh toolchain Go. Catatan: library ini TIDAK resmi dan
+# melanggar ToS WhatsApp; risiko nomor di-ban. Lihat WHATSAPP.md.
+neonize==0.4.3.post0
+linkpreview==0.12.1
+phonenumbers==9.0.36
+pillow==12.3.0
+python-magic==0.4.27
+segno==1.6.6
+tqdm==4.70.0

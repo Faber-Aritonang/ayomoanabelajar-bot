@@ -10,3 +10,9 @@ __pycache__/
 # Materi ini tetap dipakai bot secara lokal, cukup tidak ikut ter-commit.
 materials/*.md
 !materials/.gitkeep
+
+# File besar / sementara yang tidak perlu masuk repo.
+*.AppImage
+*.zip
+qr.png
+*.png

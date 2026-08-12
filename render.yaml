@@ -49,6 +49,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: GROQ_API_KEY
+        sync: false          # opsional: untuk mode suara (transkripsi voice note)
       - key: DATABASE_URL
         sync: false
       - key: RENDER_EXTERNAL_URL

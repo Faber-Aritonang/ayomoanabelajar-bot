@@ -26,6 +26,7 @@ from telegram.ext import (
 
 import database
 import quiz
+import stt
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
 
@@ -67,7 +68,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/menu - ganti mata pelajaran\n"
         "/reset - mulai obrolan baru (lupakan obrolan sebelumnya)\n"
         "/help - tampilkan bantuan ini\n\n"
-        "Setelah pilih pelajaran, langsung saja ketik pertanyaanmu ya! 😊"
+        "🎤 *Mode Suara:* kirim pesan suara (voice note) untuk bertanya "
+        "dengan bicara — Kak Moana akan mendengarkan dan menjawabnya!\n\n"
+        "Setelah pilih pelajaran, langsung saja kirim pertanyaanmu ya! 😊"
     )
     await update.message.reply_markdown(text)
 
@@ -111,12 +114,61 @@ async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
     user_text = update.message.text.strip()
-
     if len(user_text) < 1:
         await update.message.reply_text("Coba ketik pertanyaanmu, ya!")
         return
+    await process_text(update, context, user_text)
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mode suara: transkripsi voice note, lalu lanjutkan seperti pesan teks."""
+    user = update.effective_user
+
+    subject_key = context.user_data.get("subject")
+    if not subject_key:
+        await update.message.reply_text(
+            "Pilih dulu mau belajar apa, ya, Adik!", reply_markup=build_subject_keyboard()
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await update.message.reply_text("🎤 Aku dengar ya, Adik! Sebentar ya...")
+
+    voice = update.message.voice
+    if voice.duration and voice.duration > 120:
+        await update.message.reply_text(
+            "Wah, pesan suaranya kepanjangan, Adik! 😅 Coba kirim bagian yang "
+            "pendek-pendek saja ya (maksimal 2 menit)."
+        )
+        return
+
+    try:
+        file = await voice.get_file()
+        audio_bytes = await file.download_as_bytearray()
+        user_text = stt.transcribe_audio(bytes(audio_bytes))
+    except Exception as e:
+        logger.error("Gagal memproses voice dari %s: %s", user.id, e)
+        await update.message.reply_text(
+            "Ups, suara kamu belum bisa kudengar dengan jelas. "
+            "Coba kirim lagi, atau ketik pertanyaannya ya! 🙏"
+        )
+        return
+
+    if not user_text:
+        await update.message.reply_text(
+            "Aku tidak mendengar kata-katanya, Adik. Coba bicara lebih jelas atau lebih dekat dengan HP ya! 🎤"
+        )
+        return
+
+    # Beri tahu anak teks yang tertangkap, lalu proses seperti pesan biasa.
+    await update.message.reply_markdown(f'🎧 Kak Moana mendengar: *"{user_text}"*')
+    await process_text(update, context, user_text)
+
+
+async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_text: str):
+    """Inti alur pesan teks — dipakai oleh pesan ketik maupun hasil transkripsi suara."""
+    user = update.effective_user
 
     subject_key = context.user_data.get("subject")
     if not subject_key:
@@ -200,6 +252,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     render_url = os.getenv("RENDER_EXTERNAL_URL")
 

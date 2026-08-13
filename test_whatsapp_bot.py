@@ -24,12 +24,15 @@ if os.path.exists(TEST_DB):
     os.remove(TEST_DB)
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
 
+from datetime import datetime, timedelta
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 import database
 import quiz
+import reminders
 import whatsapp_bot as wb
 from neonize.proto.Neonize_pb2 import Message as MessageEv
 from neonize.utils import build_jid
@@ -81,6 +84,25 @@ def fresh_user():
     """Nomor unik agar state pelajaran antar skenario tidak saling menimpa."""
     fresh_user.counter = getattr(fresh_user, "counter", 0) + 1
     return f"6281000000{fresh_user.counter:02d}"
+
+
+def insert_message(phone, subject, role, ts):
+    """Tulis langsung ke database test dengan timestamp tertentu."""
+    db = database.SessionLocal()
+    try:
+        db.add(
+            database.ConversationModel(
+                user_id=phone,
+                username=phone,
+                subject=subject,
+                role=role,
+                message="pesan uji",
+                timestamp=ts,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 def fake_ai(subject_key, system_prompt, history, user_message):
@@ -207,6 +229,76 @@ def main():
     run("laporan (tanpa data)", make_event("laporan", phone=fresh_user()), expect="Belum ada riwayat")
     run("rapor (data kurang)", make_event("rapor", phone=fresh_user()), expect="belum cukup")
 
+    # --- Streak belajar harian ---
+    run("streak tanpa data", make_event("streak", phone=fresh_user()), expect="belum punya catatan")
+
+    now = datetime.now()
+    # User belajar 3 hari berturut-turut (hari ini, kemarin, 2 hari lalu).
+    p = fresh_user()
+    for d in range(3):
+        insert_message(p, "matematika", "user", (now - timedelta(days=d)).isoformat())
+    run("streak 3 hari berturut-turut", make_event("streak", phone=p), expect="Streak Belajarmu: 3 hari")
+
+    # Belajar kemarin & 2 hari lalu, TAPI belum hari ini -> streak masih 2
+    # (belum putus, karena hari ini masih berjalan).
+    p = fresh_user()
+    for d in (1, 2):
+        insert_message(p, "matematika", "user", (now - timedelta(days=d)).isoformat())
+    run("streak berlanjut (belum belajar hari ini)", make_event("streak", phone=p), expect="Streak Belajarmu: 2 hari")
+
+    # Terakhir belajar 3 hari lalu (terputus) -> streak baru mulai.
+    p = fresh_user()
+    insert_message(p, "matematika", "user", (now - timedelta(days=3)).isoformat())
+    run("streak putus (3 hari lalu)", make_event("streak", phone=p), expect="Streak-mu baru mulai")
+
+    # Alias "semangat" juga membuka streak.
+    run("streak (alias semangat)", make_event("semangat", phone=p), expect="Streak-mu baru mulai")
+
+    # --- Logika pengingat harian (reminders.py) ---
+    reminders.REMINDER_ENABLED = True
+    now_hour = datetime.now().hour
+    # Paksa "sekarang" berada dalam jendela kirim [jam_sekarang, jam_sekarang+2).
+    reminders.REMINDER_HOUR = now_hour
+    reminders.REMINDER_MAX_HOUR = (now_hour + 2) % 24
+    sent = set()
+
+    # User yang aktif 3 hari berturut-turut dan SUDAH belajar hari ini -> tidak diingatkan.
+    p_aktif = fresh_user()
+    for d in range(3):
+        insert_message(p_aktif, "matematika", "user", (now - timedelta(days=d)).isoformat())
+    targets = reminders.reminder_job_once(sent, platform="whatsapp")
+    ok_aktif = all(uid != p_aktif for uid, _ in targets)
+    results.append(("reminder tidak untuk user yang sudah belajar hari ini", ok_aktif, "OK" if ok_aktif else "harus diingatkan"))
+
+    # User yang terakhir belajar 2 hari lalu -> diingatkan.
+    p_lupa = fresh_user()
+    insert_message(p_lupa, "matematika", "user", (now - timedelta(days=2)).isoformat())
+    targets = reminders.reminder_job_once(sent, platform="whatsapp")
+    names = [uid for uid, _ in targets]
+    results.append(("reminder pilih user yang lupa belajar", p_lupa in names, "OK" if p_lupa in names else "harus diingatkan"))
+
+    # Sekali diingatkan hari ini -> tidak diingatkan lagi (anti-spam).
+    targets2 = reminders.reminder_job_once(sent, platform="whatsapp")
+    ok_spam = all(uid != p_lupa for uid, _ in targets2)
+    results.append(("reminder anti-spam (1x/hari)", ok_spam, "OK" if ok_spam else "tidak boleh diingatkan 2x"))
+
+    # Saat di luar jendela jam -> tidak ada target.
+    reminders.REMINDER_HOUR = (now_hour + 3) % 24
+    reminders.REMINDER_MAX_HOUR = (now_hour + 4) % 24
+    targets3 = reminders.reminder_job_once(set(), platform="whatsapp")
+    results.append(("reminder nonaktif di luar jam", targets3 == [], "OK" if targets3 == [] else "harus kosong"))
+
+    # Filter platform: user Telegram (bukan nomor 62...) tidak diingatkan bot WhatsApp.
+    p_tg = "123456789"  # bentuk user_id Telegram
+    insert_message(p_tg, "matematika", "user", (now - timedelta(days=2)).isoformat())
+    targets4 = reminders.reminder_job_once(set(), platform="whatsapp")
+    ok_filt = all(uid != p_tg for uid, _ in targets4)
+    results.append(("reminder WhatsApp mengabaikan user Telegram", ok_filt, "OK" if ok_filt else "harus diabaikan"))
+    # Sebaliknya, bot Telegram mengabaikan nomor WhatsApp.
+    targets5 = reminders.reminder_job_once(set(), platform="telegram")
+    ok_filt2 = all(uid != p_lupa for uid, _ in targets5)
+    results.append(("reminder Telegram mengabaikan user WhatsApp", ok_filt2, "OK" if ok_filt2 else "harus diabaikan"))
+
     p = fresh_user(); belajar(p)
     run("reset", make_event("reset", phone=p), expect="awal lagi")
     run("help", make_event("help", phone=fresh_user()), expect="Perintah")
@@ -238,6 +330,8 @@ def main():
         ("menu", ("menu", None)),
         ("/menu", ("menu", None)),
         ("kuis", ("kuis", None)),
+        ("streak", ("streak", None)),
+        ("semangat", ("streak", None)),
         ("1", ("pilih_subject", 1)),
         ("6", ("pilih_subject", 6)),
         ("7", ("chat", "7")),

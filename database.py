@@ -139,6 +139,70 @@ def get_all_recent_messages(user_id, limit=20):
         db.close()
 
 
+def get_streak(user_id):
+    """Hitung streak hari belajar berturut-turut (role='user') dari riwayat.
+
+    Return dict:
+        streak       - jumlah hari berturut-turut (berakhir hari ini, atau
+                       kemarin kalau hari ini belum ada aktivitas — streak
+                       "belum putus" selama hari ini masih berjalan)
+        last_active  - tanggal aktivitas terakhir (date) atau None
+        active_today - True kalau sudah ada aktivitas hari ini
+    """
+    from datetime import date, datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ConversationModel.timestamp)
+            .filter(ConversationModel.user_id == str(user_id), ConversationModel.role == "user")
+            .all()
+        )
+    finally:
+        db.close()
+
+    dates = set()
+    for (ts,) in rows:
+        try:
+            dates.add(datetime.fromisoformat(ts).date())
+        except (ValueError, TypeError):
+            continue
+
+    if not dates:
+        return {"streak": 0, "last_active": None, "active_today": False}
+
+    today = date.today()
+    cursor = today if today in dates else today - timedelta(days=1)
+    streak = 0
+    while cursor in dates:
+        streak += 1
+        cursor -= timedelta(days=1)
+
+    return {"streak": streak, "last_active": max(dates), "active_today": today in dates}
+
+
+def get_active_user_ids(days=7):
+    """Daftar user_id yang aktif dalam N hari terakhir (kandidat pengingat).
+
+    Dipakai fitur pengingat belajar harian supaya tidak mengirim pesan ke
+    orang yang sudah tidak pernah memakai bot.
+    """
+    from datetime import datetime, timedelta
+
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(ConversationModel.user_id)
+            .filter(ConversationModel.timestamp >= cutoff)
+            .distinct()
+            .all()
+        )
+        return [r[0] for r in rows]
+    finally:
+        db.close()
+
+
 def get_quiz_summary(user_id):
     """Rekap skor kuis per mata pelajaran: [(subject, total_poin, total_soal)]"""
     from sqlalchemy import func

@@ -37,6 +37,7 @@ import os
 import threading
 import time
 import urllib.request
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from io import BytesIO
 
@@ -44,6 +45,7 @@ from dotenv import load_dotenv
 
 import database
 import quiz
+import reminders
 import stt
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
@@ -52,7 +54,7 @@ load_dotenv()
 
 from neonize import NewClient
 from neonize.proto.Neonize_pb2 import Message as MessageEv
-from neonize.utils import JIDToNonAD
+from neonize.utils import JIDToNonAD, build_jid
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -71,6 +73,9 @@ PORT = int(os.getenv("PORT", "10000"))
 _user_states: dict[str, dict] = {}
 _states_lock = threading.Lock()
 
+# Nomor yang sudah menerima pengingat belajar hari ini (hindari spam).
+_reminded_today: set[tuple[str, str]] = set()
+
 # QR terbaru (PNG) untuk ditampilkan lewat web, diisi oleh callback QR.
 _latest_qr_png: bytes | None = None
 _current_client: NewClient | None = None
@@ -86,6 +91,10 @@ QR_TOKEN = os.getenv("WA_QR_TOKEN", "").strip()
 # RENDER_EXTERNAL_URL diisi otomatis oleh Render; kosong saat jalan lokal.
 KEEP_ALIVE_INTERVAL = 600  # detik
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+
+# Interval cek pengingat belajar (detik). reminder_job_once hanya mengirim
+# pada jam yang dikonfigurasi (REMINDER_HOUR), jadi cek rutin tidak spam.
+REMINDER_CHECK_INTERVAL = 1800  # 30 menit
 
 
 # --------------------------------------------------------------------------
@@ -129,6 +138,8 @@ def parse_command(text: str, subject_active: bool = False):
         "soal": ("kuis", None),
         "latihan": ("kuis", None),
         "bintang": ("bintang", None),
+        "streak": ("streak", None),
+        "semangat": ("streak", None),
         "laporan": ("laporan", None),
         "rapor": ("rapor", None),
         "help": ("help", None),
@@ -185,6 +196,7 @@ def handle_help(client, ev, phone):
         "• menu / mulai - pilih pelajaran\n"
         "• kuis / soal - latihan soal adaptif\n"
         "• bintang - lihat koleksi bintangmu ⭐\n"
+        "• streak - lihat streak belajar harianmu 🔥\n"
         "• laporan - rekap keaktifan (untuk orang tua)\n"
         "• rapor - evaluasi AI mingguan (untuk orang tua)\n"
         "• reset - mulai obrolan baru\n\n"
@@ -353,6 +365,49 @@ def handle_quiz_answer(client, ev, phone, answer_text, subject_key, subject):
             _send(client, ev, "Maaf, Kak Moana sedang kesulitan menyiapkan soal berikutnya. Coba lagi ya!")
 
 
+def handle_streak(client, ev, phone):
+    """Perintah 'streak' — tampilkan jumlah hari belajar berturut-turut."""
+    info = database.get_streak(phone)
+
+    if info["last_active"] is None:
+        _send(
+            client,
+            ev,
+            "Kamu belum punya catatan belajar, nih. Yuk mulai dengan *menu* "
+            "dan raih streak pertamamu! 🔥",
+        )
+        return
+
+    hari = info["streak"]
+    if hari == 0:
+        _send(
+            client,
+            ev,
+            f"🔥 *Streak-mu baru mulai!*\n\n"
+            f"Kamu belum belajar hari ini — yuk jangan sampai putus! "
+            f"Terakhir belajar: *{info['last_active']}*\n"
+            "Ketik *menu* untuk mulai belajar sekarang! 💪",
+        )
+        return
+
+    if hari >= 7:
+        semangat = "Luar biasa! Kebiasaan belajarmu sudah terbentuk. Pertahankan! 🏆"
+    elif hari >= 3:
+        semangat = "Hebat! Rutinitas belajarmu makin solid. Lanjutkan! 🚀"
+    else:
+        semangat = "Bagus! Terus semangat belajar ya! 😊"
+
+    teks_bintang = "🔥" * min(hari, 10)
+    _send(
+        client,
+        ev,
+        f"🔥 *Streak Belajarmu: {hari} hari berturut-turut!* 🔥\n\n"
+        f"{teks_bintang}\n\n"
+        f"Terakhir belajar: *{info['last_active']}*\n"
+        f"{semangat}",
+    )
+
+
 def handle_stars(client, ev, phone):
     progress = database.get_user_progress(phone)
 
@@ -517,6 +572,8 @@ def on_message(client: NewClient, ev: MessageEv):
             handle_quiz(client, ev, phone)
         elif cmd == "bintang":
             handle_stars(client, ev, phone)
+        elif cmd == "streak":
+            handle_streak(client, ev, phone)
         elif cmd == "laporan":
             handle_report(client, ev, phone)
         elif cmd == "rapor":
@@ -637,6 +694,28 @@ def start_http_server():
     server.serve_forever()
 
 
+def reminder_loop():
+    """Pengingat belajar harian: tiap 30 menit cek siapa yang perlu diingatkan.
+
+    reminder_job_once memastikan hanya mengirim pada jam REMINDER_HOUR dan
+    maksimal 1x per hari per nomor, jadi loop ini aman dijalankan terus.
+    """
+    while True:
+        time.sleep(REMINDER_CHECK_INTERVAL)
+        try:
+            client = _current_client
+            if not (client and client.connected):
+                continue
+            for phone, text in reminders.reminder_job_once(_reminded_today, platform="whatsapp"):
+                try:
+                    client.send_message(build_jid(phone, "s.whatsapp.net"), text)
+                    logger.info("Pengingat belajar terkirim ke %s", phone)
+                except Exception as e:
+                    logger.warning("Gagal kirim pengingat ke %s: %s", phone, e)
+        except Exception as e:
+            logger.warning("Loop pengingat error: %s", e)
+
+
 def keep_alive_loop():
     """Ping /health sendiri tiap beberapa menit agar service Render tidak tidur.
 
@@ -672,6 +751,10 @@ def main():
 
     # Keep-alive agar service Render free tier tidak tertidur (idle 15 menit).
     threading.Thread(target=keep_alive_loop, daemon=True).start()
+
+    # Pengingat belajar harian (jam dikonfigurasi lewat env REMINDER_HOUR).
+    threading.Thread(target=reminder_loop, daemon=True).start()
+    logger.info("Pengingat belajar harian aktif (jam %s).", reminders.REMINDER_HOUR)
 
     # Sesi tersimpan otomatis di SESSION_DB — restart tidak perlu scan ulang
     # (selama file DB masih ada, lihat WHATSAPP.md untuk catatan Render).

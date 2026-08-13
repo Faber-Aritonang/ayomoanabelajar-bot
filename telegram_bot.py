@@ -12,6 +12,7 @@ Cara jalankan:
 
 import logging
 import os
+from datetime import datetime
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -26,6 +27,7 @@ from telegram.ext import (
 
 import database
 import quiz
+import reminders
 import stt
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
@@ -40,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 BOT_NAME = "Ayo, Moana Belajar!"
 HISTORY_LIMIT = 10  # jumlah pesan terakhir yang dikirim sebagai konteks ke LLM
+
+# Nomor user yang sudah menerima pengingat belajar hari ini (hindari spam).
+_reminded_today: set[tuple[str, str]] = set()
 
 
 def build_subject_keyboard() -> InlineKeyboardMarkup:
@@ -66,6 +71,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Perintah yang bisa dipakai:*\n"
         "/start - mulai dari awal & pilih pelajaran\n"
         "/menu - ganti mata pelajaran\n"
+        "/streak - lihat streak belajar harianmu 🔥\n"
         "/reset - mulai obrolan baru (lupakan obrolan sebelumnya)\n"
         "/help - tampilkan bantuan ini\n\n"
         "🎤 *Mode Suara:* kirim pesan suara (voice note) untuk bertanya "
@@ -73,6 +79,54 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Setelah pilih pelajaran, langsung saja kirim pertanyaanmu ya! 😊"
     )
     await update.message.reply_markdown(text)
+
+
+async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Perintah /streak — tampilkan jumlah hari belajar berturut-turut."""
+    user = update.effective_user
+    info = database.get_streak(user.id)
+
+    if info["last_active"] is None:
+        await update.message.reply_text(
+            "Kamu belum punya catatan belajar, nih. Yuk mulai dengan /start "
+            "dan raih streak pertamamu! 🔥"
+        )
+        return
+
+    hari = info["streak"]
+    if hari == 0:
+        await update.message.reply_markdown(
+            f"🔥 *Streak-mu baru mulai!*\n\n"
+            f"Kamu belum belajar hari ini — yuk jangan sampai putus! "
+            f"Terakhir belajar: *{info['last_active']}*\n"
+            "Ketik /start untuk mulai belajar sekarang! 💪"
+        )
+        return
+
+    if hari >= 7:
+        semangat = "Luar biasa! Kebiasaan belajarmu sudah terbentuk. Pertahankan! 🏆"
+    elif hari >= 3:
+        semangat = "Hebat! Rutinitas belajarmu makin solid. Lanjutkan! 🚀"
+    else:
+        semangat = "Bagus! Terus semangat belajar ya! 😊"
+
+    teks_bintang = "🔥" * min(hari, 10)
+    await update.message.reply_markdown(
+        f"🔥 *Streak Belajarmu: {hari} hari berturut-turut!* 🔥\n\n"
+        f"{teks_bintang}\n\n"
+        f"Terakhir belajar: *{info['last_active']}*\n"
+        f"{semangat}"
+    )
+
+
+async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
+    """Job harian: kirim pengingat belajar ke anak yang belum belajar hari ini."""
+    for user_id, text in reminders.reminder_job_once(_reminded_today, platform="telegram"):
+        try:
+            await context.bot.send_message(chat_id=int(user_id), text=text)
+            logger.info("Pengingat belajar terkirim ke Telegram %s", user_id)
+        except Exception as e:
+            logger.warning("Gagal kirim pengingat ke %s: %s", user_id, e)
 
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -248,11 +302,22 @@ def main():
     app.add_handler(CommandHandler("rapor", rapor_command))
     app.add_handler(CommandHandler("menu", menu_command))
     app.add_handler(CommandHandler("kuis", kuis_command))
+    app.add_handler(CommandHandler("streak", streak_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+
+    # Pengingat belajar harian (jam dikonfigurasi lewat env REMINDER_HOUR).
+    # Interval 1 jam; reminder_job_once hanya memilih pada jam yang tepat.
+    if app.job_queue is not None:
+        app.job_queue.run_repeating(reminder_job, interval=3600, first=60)
+        logger.info("Pengingat belajar harian aktif (jam %s).", reminders.REMINDER_HOUR)
+    else:
+        logger.warning(
+            "JobQueue tidak tersedia — pasang 'python-telegram-bot[job-queue]' untuk mengaktifkan pengingat."
+        )
 
     render_url = os.getenv("RENDER_EXTERNAL_URL")
 
@@ -412,7 +477,8 @@ async def menu_command(update, context):
     pesan += "🎓 *Area Belajar (Untuk Adik):*\n"
     pesan += "• /start - Pilih pelajaran dan mulai obrolan\n"
     pesan += "• /kuis - Uji kemampuan dengan soal adaptif\n"
-    pesan += "• /bintang - Lihat koleksi bintang prestasimu ⭐\n\n"
+    pesan += "• /bintang - Lihat koleksi bintang prestasimu ⭐\n"
+    pesan += "• /streak - Lihat streak belajar harianmu 🔥\n\n"
     pesan += "👨‍👩‍👧 *Area Pantauan (Untuk Orang Tua):*\n"
     pesan += "• /laporan - Cek angka keaktifan harian\n"
     pesan += "• /rapor - Baca analisis evaluasi dari AI Tutor\n\n"

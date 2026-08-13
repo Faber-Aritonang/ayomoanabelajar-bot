@@ -1,14 +1,14 @@
 # 🌟 Ayo, Moana Belajar! - Telegram & WhatsApp AI Tutor
 
-![Version](https://img.shields.io/badge/version-v1.4.2-blue.svg)
+![Version](https://img.shields.io/badge/version-v1.4.3-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Telegram%20%26%20WhatsApp-success.svg)
 
 Bot edukatif berbasis AI yang dirancang untuk menjadi pendamping belajar anak SD yang interaktif, adaptif, dan terukur. Proyek ini dibangun dengan mengedepankan efisiensi alur belajar dan pencatatan data kemajuan siswa secara *real-time*. Tersedia di **dua platform**: **Telegram** dan **WhatsApp** — keduanya berbagi materi, prompt guru, dan database riwayat belajar yang sama.
 
-## ✨ Fitur Utama Saat Ini (v1.4.2)
+## ✨ Fitur Utama Saat Ini (v1.4.3)
 
-- 🎤 **Mode Suara (Telegram)**: Anak bisa bertanya dengan **pesan suara** (voice note) — bot mentranskripsi otomatis (Groq Whisper, Bahasa Indonesia) lalu menjawab seperti pesan teks. Ideal untuk anak SD yang lebih nyaman bicara daripada mengetik.
+- 🎤 **Mode Suara (Telegram & WhatsApp)**: Anak bisa bertanya dengan **pesan suara** (voice note) — bot mentranskripsi otomatis (Groq Whisper, Bahasa Indonesia) lalu menjawab seperti pesan teks. Ideal untuk anak SD yang lebih nyaman bicara daripada mengetik.
 - 🤖 **AI Chat Tutor**: Pendamping belajar interaktif dengan *prompt* khusus untuk berbagai mata pelajaran (Matematika, Bahasa Indonesia, Bahasa Inggris, IPAS, Pancasila, Agama Kristen).
 - 📈 **Kuis Adaptif Berpoin (Smart Evaluation)**: Sistem evaluasi cerdas yang membaca riwayat obrolan siswa untuk menyesuaikan tingkat kesulitan soal secara otomatis. Setiap jawaban benar **+10 poin**, salah **0 poin**; skor tiap sesi tersimpan di database untuk dipantau orang tua.
 - ⭐ **Sistem Gamifikasi**: Perintah `/bintang` (Telegram) atau `bintang` (WhatsApp) untuk memberikan *reward* visual berdasarkan tingkat keaktifan guna memotivasi konsistensi belajar anak.
@@ -38,6 +38,7 @@ Bot WhatsApp tersedia di file **`whatsapp_bot.py`**, berbagi `llm.py`, `subjects
 | `menu` / `mulai` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
 | `1` … `6` | Pilih pelajaran |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
+| 🎤 *(voice note)* | Tanya dengan suara — ditranskripsi otomatis (Groq Whisper) |
 | `kuis` / `soal` | Kuis adaptif pelajaran aktif |
 | `bintang` | Lihat koleksi bintang ⭐ |
 | `laporan` | Rekap keaktifan belajar (untuk orang tua) |
@@ -65,7 +66,9 @@ Skrip ini mensimulasikan 40+ skenario pesan masuk (menu, pilih pelajaran, chat, 
 
 ## 📝 Riwayat Pembaruan (Changelog)
 
-- **[v1.4.2] - Pembaruan Terkini**
+- **[v1.4.3] - Pembaruan Terkini**
+  - **Mode Suara untuk WhatsApp**: kirim voice note di WhatsApp, bot transkripsikan lewat **Groq Whisper** (sama seperti Telegram) lalu jawab seperti pesan teks. Deteksi voice note via protobuf `audioMessage` (PTT) + `client.download_any`; file audio biasa (lagu) ditolak dengan pesan ramah.
+- **[v1.4.2]**
   - **Mode Suara untuk Telegram**: kirim voice note, bot transkripsikan lewat **Groq Whisper** (gratis, Bahasa Indonesia) lalu jawab seperti pesan teks. `stt.py` dipakai bersama; `GROQ_API_KEY` di `.env` / env vars Render.
 - **[v1.4.1]**
   - **Kuis Adaptif Berpoin**: jawaban kuis kini dievaluasi otomatis (benar **+10 poin**, salah **0 poin**), skor disimpan ke `quiz_scores`, dan kunci jawaban disembunyikan dari anak (logika bersama di `quiz.py` untuk Telegram & WhatsApp).

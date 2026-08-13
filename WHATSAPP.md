@@ -23,6 +23,7 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 | `menu` atau `mulai` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
 | `1` … `6` | Pilih pelajaran (Matematika, Bahasa Indonesia, dll.) |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
+| 🎤 *(voice note)* | Tanya dengan suara — transkripsi otomatis (Groq Whisper) |
 | `kuis` atau `soal` | Kuis adaptif pelajaran aktif — 5 soal, **benar +10 poin / salah 0**, skor tersimpan |
 | `bintang` | Lihat koleksi bintang keaktifan ⭐ |
 | `laporan` | Rekap keaktifan belajar (untuk orang tua) |
@@ -31,6 +32,18 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 | `help` atau `bantuan` | Bantuan |
 
 ---
+
+## 🎤 Mode Suara (voice note)
+
+Sejak **v1.4.3**, bot WhatsApp bisa menerima **voice note** (tahan ikon
+mikrofon) — audio ditranskripsi via **Groq Whisper** (gratis, Bahasa
+Indonesia) lalu dijawab seperti pesan teks biasa. Anak juga diberi tahu
+teks yang tertangkap agar bisa mengoreksi kalau transkripsinya keliru.
+
+- Wajib punya `GROQ_API_KEY` di `.env` / env vars Render (lihat `.env.example`).
+- Maksimal **2 menit** per voice note; file audio biasa (lagu, rekaman
+  non-PTT) ditolak dengan pesan ramah.
+- Batas gratis Groq: 2.000 request/hari — lebih dari cukup untuk pemakaian normal.
 
 ## 🚀 Menjalankan (Lokal — disarankan untuk pemakaian pribadi)
 
@@ -78,6 +91,7 @@ Cek status: buka `http://localhost:10000/status` di browser.
 3. **Start Command:** `python3 whatsapp_bot.py`
 4. **Env vars** (dari dashboard Render):
    - `ANTHROPIC_API_KEY` (wajib, untuk AI)
+   - `GROQ_API_KEY` (wajib untuk mode suara; gratis dari console.groq.com)
    - `TELEGRAM_BOT_TOKEN` (tidak wajib untuk WhatsApp; hanya kalau mau
      Telegram juga jalan di service ini)
    - `WA_SESSION_DB=wa_session.db`

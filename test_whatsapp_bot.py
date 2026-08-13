@@ -48,6 +48,10 @@ class FakeClient:
     def send_message(self, to, msg):
         self.sent.append((str(to.User), msg))
 
+    def download_any(self, message):
+        """Tiruan download media voice note — kembalikan byte audio palsu."""
+        return b"\xff\xfb\x90\x00fake-ogg-audio"
+
 
 def make_event(text, from_me=False, is_group=False, phone=PHONE):
     """Bangun event pesan WhatsApp palsu berisi teks."""
@@ -57,6 +61,19 @@ def make_event(text, from_me=False, is_group=False, phone=PHONE):
     ev.Info.MessageSource.IsFromMe = from_me
     ev.Info.MessageSource.IsGroup = is_group
     ev.Message.conversation = text
+    return ev
+
+
+def make_voice_event(ptt=True, seconds=30, from_me=False, is_group=False, phone=PHONE):
+    """Bangun event voice note WhatsApp palsu (PTT, tanpa teks)."""
+    ev = MessageEv()
+    ev.Info.MessageSource.Chat.CopyFrom(build_jid(phone, "s.whatsapp.net"))
+    ev.Info.MessageSource.Sender.CopyFrom(build_jid(phone, "s.whatsapp.net"))
+    ev.Info.MessageSource.IsFromMe = from_me
+    ev.Info.MessageSource.IsGroup = is_group
+    ev.Message.audioMessage.PTT = ptt
+    ev.Message.audioMessage.seconds = seconds
+    ev.Message.audioMessage.mimetype = "audio/ogg; codecs=opus"
     return ev
 
 
@@ -83,6 +100,8 @@ def main():
     # Ganti get_ai_reply di SEMUA modul yang mengimpornya (whatsapp_bot & quiz).
     wb.get_ai_reply = fake_ai
     quiz.get_ai_reply = fake_ai
+    # Ganti transkripsi suara dengan stub — tes tidak boleh memanggil Groq.
+    wb.stt.transcribe_audio = lambda audio_bytes, filename="voice.ogg": "berapa hasil dua tambah dua"
     wb._current_client = client
 
     results = []
@@ -124,6 +143,53 @@ def main():
     p = fresh_user(); belajar(p)
     run("chat bebas", make_event("kenapa langit biru?", phone=p), expect="AI uji: kenapa langit biru?")
 
+    # --- Mode suara (voice note) ---
+    run("voice tanpa pelajaran -> minta pilih", make_voice_event(phone=fresh_user()), expect="Pilih dulu")
+    p = fresh_user(); belajar(p)
+    run(
+        "voice note -> transkripsi + echo",
+        make_voice_event(phone=p),
+        expect="Kak Moana mendengar: *\"berapa hasil dua tambah dua\"*",
+    )
+    p = fresh_user(); belajar(p)
+    run(
+        "voice note -> handoff ke alur chat/AI",
+        make_voice_event(phone=p),
+        expect="AI uji: berapa hasil dua tambah dua",
+    )
+
+    # Transkripsi kosong (tidak ada kata terdeteksi).
+    wb.stt.transcribe_audio = lambda audio_bytes, filename="voice.ogg": ""
+    p = fresh_user(); belajar(p)
+    run(
+        "voice note tanpa kata -> minta ulang",
+        make_voice_event(phone=p),
+        expect="tidak mendengar kata-katanya",
+    )
+    # Kembalikan stub normal untuk sisa tes.
+    wb.stt.transcribe_audio = lambda audio_bytes, filename="voice.ogg": "berapa hasil dua tambah dua"
+    p = fresh_user(); belajar(p)
+    run(
+        "voice note kepanjangan (>2 menit) ditolak",
+        make_voice_event(seconds=200, phone=p),
+        expect="kepanjangan",
+    )
+    run(
+        "file audio biasa (non-PTT) ditolak",
+        make_voice_event(ptt=False, phone=fresh_user()),
+        expect="belum bisa baca file audio",
+    )
+    run(
+        "voice dari diri sendiri diabaikan",
+        make_voice_event(from_me=True, phone=fresh_user()),
+        expect=None,
+    )
+    run(
+        "voice di grup diabaikan",
+        make_voice_event(is_group=True, phone=fresh_user()),
+        expect=None,
+    )
+
     # --- Kuis adaptif dengan penilaian jawaban ---
     # MAX_QUESTIONS = 5; jawaban tanpa huruf tidak dihitung sebagai soal.
     p = fresh_user(); belajar(p)
@@ -152,6 +218,16 @@ def main():
     run("pesan kosong", make_event("", phone=fresh_user()), expect="belum bisa baca")
     p = fresh_user(); belajar(p)
     run("angka 7 (di luar daftar) -> chat", make_event("7", phone=p), expect="AI uji: 7")
+
+    # --- Kegagalan transkripsi voice note ---
+    def gagal_transkripsi(audio_bytes, filename="voice.ogg"):
+        raise RuntimeError("Groq mati")
+
+    wb.stt.transcribe_audio = gagal_transkripsi
+    p = fresh_user(); belajar(p)
+    run("voice note gagal transkripsi -> pesan ramah", make_voice_event(phone=p), expect="belum bisa kudengar")
+    # Kembalikan stub normal untuk sisa tes.
+    wb.stt.transcribe_audio = lambda audio_bytes, filename="voice.ogg": "berapa hasil dua tambah dua"
 
     # Angka saat pelajaran aktif harus jadi chat, bukan ganti pelajaran.
     p = fresh_user(); belajar(p)

@@ -28,6 +28,7 @@ Perintah yang dikenali (WhatsApp tidak punya tombol, semua lewat teks):
     rapor                   -> rapor evaluasi AI mingguan (untuk orang tua)
     help / bantuan          -> bantuan
     reset                   -> mulai obrolan baru
+    🎤 voice note           -> tanya dengan suara (transkripsi otomatis, Groq Whisper)
 """
 
 import json
@@ -43,6 +44,7 @@ from dotenv import load_dotenv
 
 import database
 import quiz
+import stt
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
 
@@ -186,6 +188,8 @@ def handle_help(client, ev, phone):
         "• laporan - rekap keaktifan (untuk orang tua)\n"
         "• rapor - evaluasi AI mingguan (untuk orang tua)\n"
         "• reset - mulai obrolan baru\n\n"
+        "🎤 *Mode Suara:* kirim *voice note* (tahan ikon mikrofon) untuk bertanya "
+        "dengan bicara — Kak Moana akan mendengarkan dan menjawabnya!\n\n"
         "Setelah pilih pelajaran, langsung ketik pertanyaanmu ya! 😊"
     )
     _send(client, ev, text)
@@ -217,6 +221,58 @@ def handle_pick_subject(client, ev, phone, number):
         "Langsung tanya apa saja seputar pelajaran ini, atau ketik *kuis* "
         "untuk latihan soal!",
     )
+
+
+def handle_voice(client, ev, phone):
+    """Mode suara: transkripsi voice note WhatsApp (PTT), lalu lanjutkan seperti pesan teks."""
+    st = _state(phone)
+    subject_key = st.get("subject")
+    if not subject_key:
+        _send(
+            client,
+            ev,
+            "Pilih dulu mau belajar apa, ya, Adik!\n\n" + _subject_menu_text(),
+        )
+        return
+
+    audio = ev.Message.audioMessage
+    if audio.seconds and audio.seconds > 120:
+        _send(
+            client,
+            ev,
+            "Wah, pesan suaranya kepanjangan, Adik! 😅 Coba kirim bagian yang "
+            "pendek-pendek saja ya (maksimal 2 menit).",
+        )
+        return
+
+    _send(client, ev, "🎤 Aku dengar ya, Adik! Sebentar ya...")
+
+    try:
+        audio_bytes = client.download_any(ev.Message)
+        if not audio_bytes:
+            raise RuntimeError("Download audio mengembalikan data kosong")
+        user_text = stt.transcribe_audio(audio_bytes)
+    except Exception as e:
+        logger.error("Gagal memproses voice dari %s: %s", phone, e)
+        _send(
+            client,
+            ev,
+            "Ups, suara kamu belum bisa kudengar dengan jelas. "
+            "Coba kirim lagi, atau ketik pertanyaannya ya! 🙏",
+        )
+        return
+
+    if not user_text:
+        _send(
+            client,
+            ev,
+            "Aku tidak mendengar kata-katanya, Adik. Coba bicara lebih jelas atau lebih dekat dengan HP ya! 🎤",
+        )
+        return
+
+    # Beri tahu anak teks yang tertangkap, lalu proses seperti pesan biasa.
+    _send(client, ev, f'🎧 Kak Moana mendengar: *"{user_text}"*')
+    handle_chat(client, ev, phone, user_text)
 
 
 def handle_chat(client, ev, phone, text):
@@ -416,6 +472,20 @@ def on_message(client: NewClient, ev: MessageEv):
             return  # bot hanya melayani chat pribadi (anak/orang tua)
 
         phone = _phone_of(ev)
+
+        # Mode suara: voice note (PTT) ditranskripsi seperti di Telegram; file
+        # audio biasa (lagu, rekaman non-PTT) tidak didukung.
+        if ev.Message.HasField("audioMessage"):
+            if not ev.Message.audioMessage.PTT:
+                _send(
+                    client,
+                    ev,
+                    "Aku belum bisa baca file audio itu, Adik. Kirim *voice note* "
+                    "(tahan ikon mikrofon) atau ketik pertanyaannya saja ya! 😊",
+                )
+                return
+            handle_voice(client, ev, phone)
+            return
 
         # Ambil teks dari pesan biasa atau extended text (link preview, dll)
         text = ""

@@ -47,6 +47,7 @@ import database
 import quiz
 import reminders
 import stt
+import whitelist
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
 
@@ -442,6 +443,65 @@ def handle_stars(client, ev, phone):
     _send(client, ev, pesan)
 
 
+def handle_whitelist_admin(client, ev, phone, text):
+    """Perintah admin untuk mengelola whitelist lewat WhatsApp.
+
+    Hanya nomor admin (BOT_ADMIN_WHATSAPP) yang bisa: tambah <nomor>,
+    hapus <nomor>, daftar. Return True kalau pesan sudah ditangani di sini.
+    """
+    if not whitelist.enabled() or not whitelist.is_admin(phone, "whatsapp"):
+        return False
+
+    t = (text or "").strip().lower()
+
+    if t in ("tambah", "daftarkan", "register", "add") or t.startswith(("tambah ", "daftarkan ", "register ", "add ")):
+        parts = t.split(None, 1)
+        if len(parts) < 2 or not parts[1].strip():
+            _send(client, ev, "Format: *tambah <nomor>*\nContoh: tambah 081234567890")
+            return True
+        number = whitelist.normalize_phone(parts[1])
+        if not number or len(number) < 8:
+            _send(client, ev, "Nomor tidak valid. Format: *tambah <nomor>*\nContoh: tambah 081234567890")
+            return True
+        if database.whitelist_add(number, "whatsapp", added_by=phone):
+            _send(client, ev, f"✅ Nomor {number} berhasil didaftarkan ke whitelist.")
+        else:
+            _send(client, ev, f"ℹ️ Nomor {number} sudah ada di whitelist.")
+        return True
+
+    if t in ("hapus", "remove", "delete") or t.startswith(("hapus ", "remove ", "delete ")):
+        parts = t.split(None, 1)
+        if len(parts) < 2 or not parts[1].strip():
+            _send(client, ev, "Format: *hapus <nomor>*\nContoh: hapus 081234567890")
+            return True
+        number = whitelist.normalize_phone(parts[1])
+        if not number or len(number) < 8:
+            _send(client, ev, "Nomor tidak valid. Format: *hapus <nomor>*\nContoh: hapus 081234567890")
+            return True
+        if database.whitelist_remove(number, "whatsapp"):
+            _send(client, ev, f"🗑️ Nomor {number} dihapus dari whitelist.")
+        else:
+            _send(client, ev, f"ℹ️ Nomor {number} tidak ada di whitelist.")
+        return True
+
+    if t in ("daftar", "list", "whitelist", "lihat"):
+        entries = database.whitelist_list("whatsapp")
+        base = whitelist.base_list("whatsapp")
+        if not entries and not base:
+            _send(client, ev, "📋 Whitelist kosong. Tambahkan nomor dengan: *tambah <nomor>*")
+            return True
+        lines = ["📋 *Daftar Whitelist WhatsApp:*", ""]
+        for n in sorted(set(base) | set(entries)):
+            tag = " (env)" if n in base else ""
+            lines.append(f"• {n}{tag}")
+        lines.append("")
+        lines.append("Ketik *tambah <nomor>* / *hapus <nomor>* untuk mengelola.")
+        _send(client, ev, "\n".join(lines))
+        return True
+
+    return False
+
+
 def handle_report(client, ev, phone):
     progress = database.get_user_progress(phone)
 
@@ -528,6 +588,11 @@ def on_message(client: NewClient, ev: MessageEv):
 
         phone = _phone_of(ev)
 
+        # Whitelist: tolak dengan sopan kalau pengguna tidak terdaftar.
+        if not whitelist.is_allowed(phone, "whatsapp"):
+            _send(client, ev, whitelist.REJECT_TEXT)
+            return
+
         # Mode suara: voice note (PTT) ditranskripsi seperti di Telegram; file
         # audio biasa (lagu, rekaman non-PTT) tidak didukung.
         if ev.Message.HasField("audioMessage"):
@@ -552,6 +617,10 @@ def on_message(client: NewClient, ev: MessageEv):
         text = (text or "").strip()
         if not text:
             _send(client, ev, "Aku belum bisa baca itu. Ketik pertanyaanmu ya! 😊")
+            return
+
+        # Perintah admin untuk mengelola whitelist (hanya nomor admin).
+        if handle_whitelist_admin(client, ev, phone, text):
             return
 
         # Angka hanya dianggap "pilih pelajaran" saat belum ada pelajaran aktif.
@@ -707,6 +776,8 @@ def reminder_loop():
             if not (client and client.connected):
                 continue
             for phone, text in reminders.reminder_job_once(_reminded_today, platform="whatsapp"):
+                if not whitelist.is_allowed(phone, "whatsapp"):
+                    continue  # jangan ingatkan nomor yang tidak terdaftar
                 try:
                     client.send_message(build_jid(phone, "s.whatsapp.net"), text)
                     logger.info("Pengingat belajar terkirim ke %s", phone)

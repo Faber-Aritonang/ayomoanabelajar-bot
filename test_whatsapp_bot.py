@@ -33,6 +33,7 @@ load_dotenv()
 import database
 import quiz
 import reminders
+import whitelist
 import whatsapp_bot as wb
 from neonize.proto.Neonize_pb2 import Message as MessageEv
 from neonize.utils import build_jid
@@ -341,6 +342,37 @@ def main():
         got = wb.parse_command(raw, subject_active=False)
         ok = got == expected
         results.append((f"parse({raw!r})", ok, "OK" if ok else f"harus {expected}, ternyata {got}"))
+
+    # --- Whitelist akses bot ---
+    admin = "6281111111111"
+    wb.whitelist.ENABLED = True
+    wb.whitelist.ADMIN_WHATSAPP = admin
+    wb.whitelist._BASE_WHATSAPP = set()
+    wb.whitelist._BASE_TELEGRAM = set()
+
+    run("whitelist: non-admin ditolak sopan", make_event("menu", phone=fresh_user()), expect="khusus untuk siswa")
+    run("whitelist: non-admin voice ditolak", make_voice_event(phone=fresh_user()), expect="khusus untuk siswa")
+    run("whitelist: admin dilayani", make_event("menu", phone=admin), expect="memilih pelajaran")
+
+    # Admin menambah nomor lewat perintah teks.
+    run("whitelist: tambah nomor", make_event("tambah 0812-3456-7890", phone=admin), expect="6281234567890 berhasil didaftarkan")
+    run("whitelist: nomor baru sudah boleh", make_event("menu", phone="6281234567890"), expect="memilih pelajaran")
+    run("whitelist: daftar menampilkan nomor", make_event("daftar", phone=admin), expect="6281234567890")
+    run("whitelist: tambah duplikat", make_event("tambah 6281234567890", phone=admin), expect="sudah ada")
+    run("whitelist: hapus nomor", make_event("hapus 6281234567890", phone=admin), expect="dihapus dari whitelist")
+    run("whitelist: nomor dihapus -> ditolak lagi", make_event("menu", phone="6281234567890"), expect="khusus untuk siswa")
+    run("whitelist: non-admin tidak bisa tambah", make_event("tambah 6280000000000", phone="6289999999999"), expect="khusus untuk siswa")
+    run("whitelist: format tambah salah", make_event("tambah", phone=admin), expect="tambah <nomor>")
+    run("whitelist: nomor tidak valid ditolak", make_event("tambah 22", phone=admin), expect="Nomor tidak valid")
+
+    # Nomor dari env var juga diterima.
+    wb.whitelist._BASE_WHATSAPP = {"6285555555555"}
+    run("whitelist: nomor dari env dilayani", make_event("menu", phone="6285555555555"), expect="memilih pelajaran")
+    wb.whitelist._BASE_WHATSAPP = set()
+
+    # Kembalikan whitelist ke nonaktif supaya tes lain tidak terpengaruh.
+    wb.whitelist.ENABLED = False
+    wb.whitelist.ADMIN_WHATSAPP = ""
 
     # --- Keamanan halaman /qr ---
     handler = wb.BotHTTPHandler.__new__(wb.BotHTTPHandler)

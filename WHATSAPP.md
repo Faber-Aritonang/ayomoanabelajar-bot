@@ -27,12 +27,33 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 | `kuis` atau `soal` | Kuis adaptif pelajaran aktif — 5 soal, **benar +10 poin / salah 0**, skor tersimpan |
 | `bintang` | Lihat koleksi bintang keaktifan ⭐ |
 | `streak` atau `semangat` | Lihat streak belajar harian 🔥 |
+| `tambah <nomor>` / `hapus <nomor>` / `daftar` | *(Admin)* Kelola whitelist akses bot |
 | `laporan` | Rekap keaktifan belajar (untuk orang tua) |
 | `rapor` | Rapor evaluasi AI mingguan (untuk orang tua) |
 | `reset` | Mulai obrolan baru (lupakan konteks sebelumnya) |
 | `help` atau `bantuan` | Bantuan |
 
 ---
+
+## 🔒 Whitelist Akses Bot (opsional)
+
+Fitur pembatasan akses: saat diaktifkan, hanya nomor yang terdaftar yang
+bisa memakai bot. Nomor lain mendapat balasan ramah dan tidak dilayani.
+
+**Cara mengaktifkan** (env vars di `.env` / dashboard Render):
+- `BOT_WHITELIST_ENABLED=1`
+- `BOT_ADMIN_WHATSAPP=<nomor adminmu>` (mis. `6281234567890`)
+- Opsional daftar awal: `WA_WHITELIST=628xxx,628yyy`
+
+**Kelola dari chat (hanya nomor admin):**
+| Perintah | Fungsi |
+|---|---|
+| `tambah <nomor>` | Daftarkan nomor (format bebas: 0812…, +62…) |
+| `hapus <nomor>` | Hapus nomor dari daftar |
+| `daftar` | Tampilkan semua nomor terdaftar |
+
+> Nomor admin selalu dilayani, jadi kamu tidak akan terkunci di luar bot.
+> Pengingat harian juga hanya dikirim ke nomor terdaftar.
 
 ## 🔥 Streak & ⏰ Pengingat Belajar Harian
 
@@ -109,6 +130,8 @@ Cek status: buka `http://localhost:10000/status` di browser.
    - `ANTHROPIC_API_KEY` (wajib, untuk AI)
    - `GROQ_API_KEY` (wajib untuk mode suara; gratis dari console.groq.com)
    - `REMINDER_HOUR=9` (jam pengingat belajar, UTC — 16:00 WIB; opsional)
+   - `BOT_WHITELIST_ENABLED=1` + `BOT_ADMIN_WHATSAPP=<nomormu>` (opsional,
+     kalau mau batasi siapa yang bisa memakai bot)
    - `TELEGRAM_BOT_TOKEN` (tidak wajib untuk WhatsApp; hanya kalau mau
      Telegram juga jalan di service ini)
    - `WA_SESSION_DB=wa_session.db`

@@ -29,6 +29,7 @@ import database
 import quiz
 import reminders
 import stt
+import whitelist
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
 
@@ -45,6 +46,24 @@ HISTORY_LIMIT = 10  # jumlah pesan terakhir yang dikirim sebagai konteks ke LLM
 
 # Nomor user yang sudah menerima pengingat belajar hari ini (hindari spam).
 _reminded_today: set[tuple[str, str]] = set()
+
+
+class WhitelistedFilter(filters.BaseFilter):
+    """Filter Telegram: hanya user terdaftar di whitelist yang lolos.
+
+    Saat whitelist nonaktif (default) filter selalu lolos; saat aktif,
+    user yang tidak terdaftar tidak akan mencapai handler mana pun dan
+    ditangani oleh handler penolakan ramah.
+    """
+
+    def check_update(self, update: Update) -> bool:
+        user = update.effective_user
+        if user is None:
+            return False
+        return whitelist.is_allowed(str(user.id), platform="telegram")
+
+
+WL_FILTER = WhitelistedFilter()
 
 
 def build_subject_keyboard() -> InlineKeyboardMarkup:
@@ -122,11 +141,75 @@ async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reminder_job(context: ContextTypes.DEFAULT_TYPE):
     """Job harian: kirim pengingat belajar ke anak yang belum belajar hari ini."""
     for user_id, text in reminders.reminder_job_once(_reminded_today, platform="telegram"):
+        if not whitelist.is_allowed(user_id, "telegram"):
+            continue  # jangan ingatkan user yang tidak terdaftar
         try:
             await context.bot.send_message(chat_id=int(user_id), text=text)
             logger.info("Pengingat belajar terkirim ke Telegram %s", user_id)
         except Exception as e:
             logger.warning("Gagal kirim pengingat ke %s: %s", user_id, e)
+
+
+async def reject_not_whitelisted(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Balasan ramah untuk pesan dari user yang tidak terdaftar."""
+    await update.message.reply_text(whitelist.REJECT_TEXT)
+
+
+async def admin_whitelist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Perintah admin untuk mengelola whitelist Telegram.
+
+    /tambah <user_id>  - daftarkan user
+    /hapus  <user_id>  - hapus user dari whitelist
+    /daftar            - tampilkan daftar whitelist
+    """
+    user = update.effective_user
+    if not whitelist.is_admin(str(user.id), "telegram"):
+        await update.message.reply_text("Perintah ini hanya untuk admin. 😊")
+        return
+
+    # Ambil nama perintah; tangani juga format /tambah@NamaBot.
+    cmd = update.effective_message.text.split()[0].lower().lstrip("/").split("@")[0]
+
+    if cmd in ("daftar", "list"):
+        entries = database.whitelist_list("telegram")
+        base = whitelist.base_list("telegram")
+        if not entries and not base:
+            await update.message.reply_text("📋 Whitelist Telegram kosong. Tambahkan dengan /tambah <user_id>.")
+            return
+        lines = ["📋 *Daftar Whitelist Telegram:*", ""]
+        for uid in sorted(set(base) | set(entries)):
+            tag = " (env)" if uid in base else ""
+            lines.append(f"• {uid}{tag}")
+        lines.append("")
+        lines.append("Ketik /tambah <user_id> atau /hapus <user_id> untuk mengelola.")
+        await update.message.reply_markdown("\n".join(lines))
+        return
+
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "Format: */tambah <user_id>* atau */hapus <user_id>*\n"
+            "Cari user_id lewat bot @userinfobot kalau belum tahu."
+        )
+        return
+
+    uid = args[0].strip()
+    if not uid.isdigit():
+        await update.message.reply_text("user_id harus berupa angka. Contoh: /tambah 123456789")
+        return
+
+    if cmd in ("tambah", "add"):
+        if database.whitelist_add(uid, "telegram", added_by=str(user.id)):
+            await update.message.reply_text(f"✅ User {uid} berhasil didaftarkan ke whitelist.")
+        else:
+            await update.message.reply_text(f"ℹ️ User {uid} sudah ada di whitelist.")
+    elif cmd in ("hapus", "remove", "delete"):
+        if database.whitelist_remove(uid, "telegram"):
+            await update.message.reply_text(f"🗑️ User {uid} dihapus dari whitelist.")
+        else:
+            await update.message.reply_text(f"ℹ️ User {uid} tidak ada di whitelist.")
+    else:
+        await update.message.reply_text("Perintah tidak dikenal. Coba /tambah, /hapus, atau /daftar.")
 
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -296,18 +379,37 @@ def main():
 
     app = Application.builder().token(token).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("laporan", laporan_command))
-    app.add_handler(CommandHandler("bintang", bintang_command))
-    app.add_handler(CommandHandler("rapor", rapor_command))
-    app.add_handler(CommandHandler("menu", menu_command))
-    app.add_handler(CommandHandler("kuis", kuis_command))
-    app.add_handler(CommandHandler("streak", streak_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("reset", reset))
-    app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(CommandHandler("start", start, filters=WL_FILTER))
+    app.add_handler(CommandHandler("laporan", laporan_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("bintang", bintang_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("rapor", rapor_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("menu", menu_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("kuis", kuis_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("streak", streak_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("help", help_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("reset", reset, filters=WL_FILTER))
+    # Perintah admin whitelist — tetap terpasang walau whitelist nonaktif,
+    # is_admin di dalamnya yang memastikan hanya admin yang bisa pakai.
+    app.add_handler(CommandHandler(["tambah", "add"], admin_whitelist_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler(["hapus", "remove", "delete"], admin_whitelist_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler(["daftar", "list"], admin_whitelist_command, filters=WL_FILTER))
+    app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:", filters=WL_FILTER))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & WL_FILTER, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE & WL_FILTER, handle_voice))
+
+    if whitelist.enabled():
+        # Penolakan ramah: semua pesan yang tidak cocok handler di atas (karena
+        # filter whitelist) jatuh ke sini. Handler ini DIPASANG TERAKHIR.
+        app.add_handler(MessageHandler(filters.ALL & ~WL_FILTER, reject_not_whitelisted))
+        # Kalau user non-whitelist menekan tombol inline (callback query),
+        # beri tahu dengan sopan alih-alih diam saja.
+        app.add_handler(
+            CallbackQueryHandler(
+                lambda update, ctx: update.callback_query.answer(whitelist.REJECT_TEXT, show_alert=True),
+                filters=~WL_FILTER,
+            )
+        )
+        logger.info("Whitelist AKTIF — hanya pengguna terdaftar yang dilayani.")
 
     # Pengingat belajar harian (jam dikonfigurasi lewat env REMINDER_HOUR).
     # Interval 1 jam; reminder_job_once hanya memilih pada jam yang tepat.

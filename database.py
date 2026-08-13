@@ -49,6 +49,16 @@ class QuizScoreModel(Base):
     timestamp = Column(String)
 
 
+class WhitelistModel(Base):
+    __tablename__ = "whitelist"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    identifier = Column(String)  # nomor HP (WhatsApp) / user_id (Telegram)
+    platform = Column(String)  # 'whatsapp' atau 'telegram'
+    added_by = Column(String)
+    timestamp = Column(String)
+
+
 def save_quiz_score(user_id, username, subject, score, total_questions):
     db = SessionLocal()
     try:
@@ -196,6 +206,78 @@ def get_active_user_ids(days=7):
             db.query(ConversationModel.user_id)
             .filter(ConversationModel.timestamp >= cutoff)
             .distinct()
+            .all()
+        )
+        return [r[0] for r in rows]
+    finally:
+        db.close()
+
+
+def whitelist_add(identifier, platform, added_by=""):
+    """Tambahkan identifier ke whitelist. Return True kalau baru ditambahkan."""
+    db = SessionLocal()
+    try:
+        exists = (
+            db.query(WhitelistModel)
+            .filter(WhitelistModel.identifier == identifier, WhitelistModel.platform == platform)
+            .first()
+        )
+        if exists:
+            return False
+        db.add(
+            WhitelistModel(
+                identifier=identifier,
+                platform=platform,
+                added_by=added_by,
+                timestamp=datetime.now().isoformat(),
+            )
+        )
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def whitelist_remove(identifier, platform):
+    """Hapus identifier dari whitelist. Return True kalau ada yang dihapus."""
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(WhitelistModel)
+            .filter(WhitelistModel.identifier == identifier, WhitelistModel.platform == platform)
+            .first()
+        )
+        if not row:
+            return False
+        db.delete(row)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def whitelist_contains(identifier, platform):
+    """Cek apakah identifier ada di whitelist (database)."""
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(WhitelistModel)
+            .filter(WhitelistModel.identifier == identifier, WhitelistModel.platform == platform)
+            .first()
+        )
+        return row is not None
+    finally:
+        db.close()
+
+
+def whitelist_list(platform):
+    """Daftar identifier yang ada di whitelist (database) untuk platform tertentu."""
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(WhitelistModel.identifier)
+            .filter(WhitelistModel.platform == platform)
+            .order_by(WhitelistModel.id)
             .all()
         )
         return [r[0] for r in rows]

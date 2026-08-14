@@ -10,9 +10,12 @@ Cara jalankan:
     python3 telegram_bot.py
 """
 
+import json
 import logging
 import os
+import threading
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -155,6 +158,18 @@ async def reject_not_whitelisted(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text(whitelist.REJECT_TEXT)
 
 
+async def reject_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Balasan ramah untuk tombol inline dari user yang tidak terdaftar.
+
+    Dipasang TERAKHIR tanpa pattern, jadi hanya menangkap callback yang tidak
+    ditangani handler lain (mis. tombol pelajaran dari user non-whitelist).
+    """
+    user = update.effective_user
+    if user is None or whitelist.is_allowed(str(user.id), platform="telegram"):
+        return  # user terdaftar — biarkan ditangani handler lain
+    await update.callback_query.answer(whitelist.REJECT_TEXT, show_alert=True)
+
+
 async def admin_whitelist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Perintah admin untuk mengelola whitelist Telegram.
 
@@ -231,6 +246,11 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user = query.from_user
+    if not whitelist.is_allowed(str(user.id), platform="telegram"):
+        # Whitelist aktif & user tidak terdaftar — tolak dengan ramah.
+        await query.answer(whitelist.REJECT_TEXT, show_alert=True)
+        return
     await query.answer()
 
     subject_key = query.data.split(":", 1)[1]
@@ -364,8 +384,41 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
             )
 
 
+class HealthHandler(BaseHTTPRequestHandler):
+    """Endpoint /health sederhana — hanya untuk menjaga service Render tetap hidup."""
+
+    def log_message(self, fmt, *args):  # diamkan log request default
+        pass
+
+    def do_GET(self):
+        body = json.dumps({"status": "ok"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def start_health_server(port: int):
+    """Bind $PORT di Render saat bot berjalan dalam mode polling (webhook nonaktif).
+
+    Render mensyaratkan web service membuka minimal satu port; tanpa ini,
+    Render mematikan service dengan pesan "no open ports detected". Server
+    kecil ini menjawab /health sehingga service tetap hidup — opsional pasang
+    UptimeRobot ke https://<nama-service>.onrender.com/health sebagai keep-alive.
+    """
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    except OSError as e:
+        logger.warning("Gagal membuka port %s untuk health check: %s", port, e)
+        return
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    logger.info("HTTP server (health check) berjalan di port %s", port)
+
+
 def main():
     import asyncio
+
     try:
         asyncio.get_event_loop()
     except RuntimeError:
@@ -393,7 +446,9 @@ def main():
     app.add_handler(CommandHandler(["tambah", "add"], admin_whitelist_command, filters=WL_FILTER))
     app.add_handler(CommandHandler(["hapus", "remove", "delete"], admin_whitelist_command, filters=WL_FILTER))
     app.add_handler(CommandHandler(["daftar", "list"], admin_whitelist_command, filters=WL_FILTER))
-    app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:", filters=WL_FILTER))
+    # Catatan: CallbackQueryHandler (PTB >= 21) tidak menerima argumen `filters`;
+    # cek whitelist dilakukan di dalam handler subject_chosen.
+    app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & WL_FILTER, handle_message))
     app.add_handler(MessageHandler(filters.VOICE & WL_FILTER, handle_voice))
 
@@ -402,13 +457,9 @@ def main():
         # filter whitelist) jatuh ke sini. Handler ini DIPASANG TERAKHIR.
         app.add_handler(MessageHandler(filters.ALL & ~WL_FILTER, reject_not_whitelisted))
         # Kalau user non-whitelist menekan tombol inline (callback query),
-        # beri tahu dengan sopan alih-alih diam saja.
-        app.add_handler(
-            CallbackQueryHandler(
-                lambda update, ctx: update.callback_query.answer(whitelist.REJECT_TEXT, show_alert=True),
-                filters=~WL_FILTER,
-            )
-        )
+        # beri tahu dengan sopan alih-alih diam saja. Dipasang terakhir tanpa
+        # pattern supaya hanya menangkap callback yang tidak ditangani di atas.
+        app.add_handler(CallbackQueryHandler(reject_callback))
         logger.info("Whitelist AKTIF — hanya pengguna terdaftar yang dilayani.")
 
     # Pengingat belajar harian (jam dikonfigurasi lewat env REMINDER_HOUR).
@@ -436,7 +487,12 @@ def main():
             webhook_url=webhook_url,
         )
     else:
-        # Mode POLLING - dipakai saat dijalankan lokal di laptop
+        # Mode POLLING - dipakai saat dijalankan lokal di laptop.
+        # Kalau ini berjalan di Render (env RENDER ada) tapi RENDER_EXTERNAL_URL
+        # kosong, tetap buka port supaya Render tidak mematikan service karena
+        # "no open ports detected".
+        if os.getenv("RENDER"):
+            start_health_server(int(os.getenv("PORT", "10000")))
         logger.info("%s sedang berjalan (Telegram, polling)...", BOT_NAME)
         app.run_polling()
 

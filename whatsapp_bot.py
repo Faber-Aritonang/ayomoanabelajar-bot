@@ -56,6 +56,7 @@ load_dotenv()
 from neonize import NewClient
 from neonize.proto.Neonize_pb2 import Message as MessageEv
 from neonize.utils import JIDToNonAD, build_jid
+from neonize.utils.enum import ClientName
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -753,6 +754,46 @@ class BotHTTPHandler(BaseHTTPRequestHandler):
                     },
                     status=404,
                 )
+
+        elif path == "/pair":
+            """Alternatif tanpa scan QR: bot generate Pairing Code, lalu ketik
+            kode itu di HP (WhatsApp > Perangkat Tertaut > Hubungkan dengan
+            Nomor Telepon). Dipakai kalau QR sulit discan (mis. di server)."""
+            if not self._qr_allowed():
+                self._json(
+                    {"error": "forbidden", "hint": "Butuh ?token=..."},
+                    status=403,
+                )
+                return
+            query = self.path.split("?", 1)[1] if "?" in self.path else ""
+            import urllib.parse
+
+            params = urllib.parse.parse_qs(query)
+            phone = params.get("phone", [""])[0].strip()
+            if not phone:
+                self._json(
+                    {"error": "butuh parameter ?phone=<nomor>",
+                     "hint": "Contoh: /pair?phone=6281234567890&token=..."},
+                    status=400,
+                )
+                return
+            client = _current_client
+            if not client:
+                self._json({"error": "client belum siap, coba lagi"}, status=503)
+                return
+            try:
+                code = client.PairPhone(phone, False, ClientName.LINUX)
+                logger.info("Pairing Code untuk %s: %s", phone, code)
+                self._json(
+                    {
+                        "phone": phone,
+                        "pairing_code": code,
+                        "hint": "Di HP: WhatsApp > Perangkat Tertaut > Hubungkan dengan Nomor Telepon, lalu ketik kode ini.",
+                    }
+                )
+            except Exception as e:
+                logger.exception("Gagal generate Pairing Code: %s", e)
+                self._json({"error": f"gagal generate pairing code: {e}"}, status=500)
         else:
             self._json({"error": "not found"}, status=404)
 

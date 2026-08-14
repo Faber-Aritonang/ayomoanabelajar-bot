@@ -388,6 +388,14 @@ def main():
     got = wb.BotHTTPHandler._qr_allowed(handler)
     results.append(("qr ditolak setelah login", got is False, "OK" if got is False else "harus False"))
 
+    # --- Keamanan endpoint /pair (pakai proteksi token yang sama) ---
+    handler._is_connected = lambda: False
+    for path, expected in [("/pair", False), ("/pair?phone=628123&token=salah", False), ("/pair?phone=628123&token=rahasia", True)]:
+        handler.path = path
+        got = wb.BotHTTPHandler._qr_allowed(handler)
+        ok = got == expected
+        results.append((f"pair {path}", ok, "OK" if ok else f"harus {expected}, ternyata {got}"))
+
     # --- Laporan hasil ---
     print("=" * 60)
     print("HASIL TES OFFLINE BOT WHATSAPP")

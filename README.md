@@ -1,7 +1,7 @@
 # 🌟 Ayo, Moana Belajar! - Telegram & WhatsApp AI Tutor
 
-![Version](https://img.shields.io/badge/version-v1.4.5-blue.svg)
-![Python](https://img.shields.io/badge/python-3.12-green.svg)
+![Version](https://img.shields.io/badge/version-v1.4.6-blue.svg)
+![Python](https://img.shields.io/badge/python-3.14-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Telegram%20%26%20WhatsApp-success.svg)
 
 Bot edukatif berbasis AI yang dirancang untuk menjadi pendamping belajar anak SD yang interaktif, adaptif, dan terukur. Proyek ini dibangun dengan mengedepankan efisiensi alur belajar dan pencatatan data kemajuan siswa secara *real-time*. Tersedia di **dua platform**: **Telegram** dan **WhatsApp** — keduanya berbagi materi, prompt guru, dan database riwayat belajar yang sama.
@@ -35,8 +35,9 @@ Fitur ini **nonaktif secara default** (semua orang bisa pakai bot). Untuk mengak
 
 ## 🛠️ Teknologi & Arsitektur Sistem
 
-- **Bahasa**: Python 3
-- **Database**: Integrasi *seamless* antara SQLite (Lokal) & PostgreSQL (Cloud Render) menggunakan **SQLAlchemy ORM**.
+- **Bahasa**: Python 3.14 (dipin **g** lewat `.python-version`)
+
+- **Database**: Integrasi *seamless* antara SQLite (Lokal) & PostgreSQL (**Neon** cloud) menggunakan **SQLAlchemy ORM** — data tersimpan permanen, tidak hilang saat redeploy.
 - **Framework Telegram**: `python-telegram-bot` v22
 - **Framework WhatsApp**: `Neonize` (wrapper Python untuk `whatsmeow`)
 - **AI**: Anthropic Claude (Haiku 4.5)
@@ -85,7 +86,11 @@ Skrip ini mensimulasikan 40+ skenario pesan masuk (menu, pilih pelajaran, chat, 
 
 ## 📝 Riwayat Pembaruan (Changelog)
 
-- **[v1.4.5] - Pembaruan Terkini**
+- **[v1.4.6] - Pembaruan Terkini**
+  - **Database permanen (Neon Postgres)**: `DATABASE_URL` kini dipakai kedua bot via **Neon** (free tier, cloud) — riwayat chat, streak, bintang, dan skor kuis **tidak hilang lagi** saat redeploy/restart (sebelumnya tersimpan di SQLite filesystem Render yang sementara).
+  - **Fix crash di Python 3.14**: ganti driver `psycopg2-binary` (tidak kompatibel dengan Python 3.14) ke **`psycopg[binary]` v3**; `database.py` otomatis memakai `postgresql+psycopg://`.
+  - **Versi Python eksplisit**: `runtime.txt` dihapus (tidak lagi didukung Render) → diganti **`.python-version`** (`3.14.3`).
+- **[v1.4.5]**
   - **Whitelist Akses Bot**: `whitelist.py` (logika bersama) + tabel `whitelist` di database. Aktifkan dengan `BOT_WHITELIST_ENABLED=1`; daftar tetap via `WA_WHITELIST`/`TG_WHITELIST`, daftar dinamis via perintah admin (`tambah`/`hapus`/`daftar` di WhatsApp, `/tambah`/`/hapus`/`/daftar` di Telegram). Nomor tidak terdaftar ditolak dengan pesan ramah.
 - **[v1.4.4]**
   - **Streak Belajar Harian**: hari belajar berturut-turut dihitung dari riwayat database, ditampilkan via `/streak` (Telegram) / `streak` (WhatsApp).

@@ -126,7 +126,9 @@ Cek status: buka `http://localhost:10000/status` di browser.
 1. Buat **Web Service** baru di Render, hubungkan repo ini.
 2. **Build Command:** `pip install -r requirements.txt`
 3. **Start Command:** `python3 whatsapp_bot.py`
-4. **Env vars** (dari dashboard Render):
+4. **Versi Python:** file **`.python-version`** di root repo (isi `3.14.3`)
+   menentukan versi Python. (`runtime.txt` sudah tidak didukung Render.)
+5. **Env vars** (dari dashboard Render):
    - `ANTHROPIC_API_KEY` (wajib, untuk AI)
    - `GROQ_API_KEY` (wajib untuk mode suara; gratis dari console.groq.com)
    - `REMINDER_HOUR=9` (jam pengingat belajar, UTC — 16:00 WIB; opsional)
@@ -138,14 +140,23 @@ Cek status: buka `http://localhost:10000/status` di browser.
    - `WA_QR_TOKEN=<string acak panjang>` (sangat disarankan — URL Render itu
      publik, token ini melindungi halaman `/qr` dari orang lain yang ingin
      membajak sesi WhatsApp kamu)
-   - `DATABASE_URL` (PostgreSQL yang sudah dipakai bot Telegram, agar riwayat
-     belajar anak tersambung antar platform — opsional)
+   - `DATABASE_URL` (**disarankan**) — Postgres **Neon** (free tier) yang
+     dipakai kedua bot agar riwayat belajar tersimpan permanen & tersambung
+     antar platform. Tanpa ini bot memakai SQLite lokal yang **hilang saat
+     redeploy/restart** di plan free.
 5. Buka `https://app-kamu.onrender.com/qr?token=<nilai WA_QR_TOKEN>` dari HP,
    scan QR-nya (atau pakai Pairing Code dari log Render). **Lakukan ini
    segera setelah deploy**, karena free tier akan mati setelah 15 menit idle.
    Setelah login sukses, `/qr` otomatis ditolak (403) dan QR tidak lagi
 diekspos.
 6. Pasang UptimeRobot ke `/health` supaya service tetap hidup.
+
+> ℹ️ **Database Postgres (Neon):** kedua bot berbagi `DATABASE_URL` yang
+> sama. Driver yang dipakai adalah **psycopg v3** (`psycopg[binary]`) karena
+> `psycopg2-binary` lama tidak kompatibel dengan Python 3.14 yang dipakai
+> build Render. `database.py` otomatis memakai skema `postgresql+psycopg://`.
+> Data (riwayat chat, streak, bintang, skor kuis) tersimpan **permanen** di
+> cloud — tidak hilang saat redeploy.
 
 > ℹ️ **Port:** Render menyuntikkan `PORT` otomatis; HTTP server di
 > `whatsapp_bot.py` sudah membaca `PORT` dari environment, jadi tidak perlu

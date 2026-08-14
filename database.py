@@ -13,8 +13,12 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///chatbot.db")
 
 # Penyesuaian khusus untuk URL postgres dari Render (jika menggunakan awalan postgres://)
+# Pakai driver psycopg v3 (psycopg[binary]) — kompatibel dengan Python 3.14 yang
+# dipakai build Render (psycopg2-binary lama crash: undefined symbol _PyInterpreterState_Get).
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 # Inisialisasi Engine SQLAlchemy
 if DATABASE_URL.startswith("sqlite"):

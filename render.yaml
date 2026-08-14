@@ -35,11 +35,13 @@ services:
         sync: false          # diisi otomatis oleh Render (dipakai keep-alive)
 
   # ---------- Bot Telegram ----------
+  # Nama service ini HARUS sama dengan service yang sudah ada di dashboard
+  # (ayomoanabelajar-bot), supaya kalau Blueprint dijalankan ulang, Render
+  # memperbarui service yang sama alih-alih membuat duplikat baru.
   # Catatan: PTB webhook tidak punya endpoint /health, jadi healthCheckPath
-  # tidak dipakai. Kalau bot Telegram SUDAH ter-deploy di Render, hapus blok
-  # ini dari render.yaml agar tidak membuat service duplikat.
+  # tidak dipakai.
   - type: web
-    name: ayomoana-telegram
+    name: ayomoanabelajar-bot
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

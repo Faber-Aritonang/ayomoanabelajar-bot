@@ -33,3 +33,7 @@ pillow==12.3.0
 python-magic==0.4.27
 segno==1.6.6
 tqdm==4.70.0
+
+# --- Text-to-Speech (gratis) ---
+# Untuk fitur bot memberi respons berupa voice note
+gtts==2.5.1

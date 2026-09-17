@@ -32,6 +32,7 @@ import database
 import quiz
 import reminders
 import stt
+import tts
 import whitelist
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
@@ -97,12 +98,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/reset - mulai obrolan baru (lupakan obrolan sebelumnya)\n"
         "/help - tampilkan bantuan ini\n\n"
         "🎤 *Mode Suara:* kirim pesan suara (voice note) untuk bertanya "
-        "dengan bicara — Kak Moana akan mendengarkan dan menjawabnya!\n\n"
+        "dengan bicara — Kak Moana akan mendengarkan dan menjawabnya!\n"
+        "✨ *Voice Reply:* Kak Moana juga merespons dengan suara secara otomatis.\n\n"
         "Setelah pilih pelajaran, langsung saja kirim pertanyaanmu ya! 😊"
     )
     await update.message.reply_markdown(text)
-
-
 async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Perintah /streak — tampilkan jumlah hari belajar berturut-turut."""
     user = update.effective_user
@@ -354,7 +354,47 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     database.save_message(user.id, user.username or user.first_name, subject_key, "user", user_text)
     database.save_message(user.id, user.username or user.first_name, subject_key, "assistant", reply)
 
+    # Kirim teks sebagai jawaban
     await update.message.reply_text(reply)
+
+    # Selalu kirim juga sebagai voice note (TTS otomatis aktif)
+    if tts.is_tts_available():
+        await send_voice_reply(update, context, reply)
+
+
+async def send_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, reply_text: str):
+    """Kirim jawaban sebagai voice note (TTS) untuk users yang prefer voice."""
+    user_id = update.effective_user.id
+    temp_path = None
+    
+    # Hasil konversi TTS
+    audio_bytes = tts.text_to_speech(reply_text, language="id")
+    if audio_bytes is None:
+        logger.warning("Gagal konversi TTS untuk user %s", user_id)
+        return
+
+    try:
+        # Buat file temporary untuk Telegram API
+        temp_path = tts.create_voice_file(audio_bytes, filename="voice.mp3")
+
+        # Bot kirim voice note
+        with open(temp_path, "rb") as audio_file:
+            await context.bot.send_voice(
+                chat_id=update.effective_chat.id,
+                voice=audio_file,
+                caption="🎙️ Jawaban Kak Moana",
+                parse_mode="Markdown"
+            )
+        logger.info("Terkirim voice balasan ke user %s", user_id)
+    except Exception as e:
+        logger.error("Gagal kirim voice note ke %s: %s", user_id, e)
+    finally:
+        # Bersihkan file sementara
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except Exception:
+                pass
 
 
 async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, answer_text, subject_key, subject):

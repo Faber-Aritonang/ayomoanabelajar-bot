@@ -23,9 +23,6 @@ typing-inspection==0.4.2
 typing_extensions==4.16.0
 
 # --- WhatsApp bot (Neonize / whatsmeow) ---
-# Wajib untuk whatsapp_bot.py. Prebuilt wheel tersedia untuk linux x86_64,
-# jadi tidak butuh toolchain Go. Catatan: library ini TIDAK resmi dan
-# melanggar ToS WhatsApp; risiko nomor di-ban. Lihat WHATSAPP.md.
 neonize==0.4.3.post0
 linkpreview==0.12.1
 phonenumbers==9.0.36
@@ -34,10 +31,10 @@ python-magic==0.4.27
 segno==1.6.6
 tqdm==4.70.0
 
-# --- Text-to-Speech (gratis) ---
-# Untuk fitur bot memberi respons berupa voice note
-# Coqui TTS - lebih natural (lebih heavy resource)
-TTS==0.24.0
+# --- Text-to-Speech ---
+# Kokoro TTS - sangat natural open source
+kokoro-tts==1.0.0
+torch==2.3.0
 soundfile==0.12.1
-# gTTS fallback - Google Text-to-Speech (lebih ringan)
+# gTTS fallback - Google TTS
 gtts==2.5.1

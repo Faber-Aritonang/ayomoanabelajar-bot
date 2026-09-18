@@ -2,16 +2,15 @@
 tts.py
 ======
 Text-to-Speech untuk bot Telegram.
-Menggunakan Coqui TTS (lebih natural) + gTTS sebagai fallback.
+Menggunakan Kokoro TTS (sangat natural) + gTTS sebagai fallback.
 
-Model Bahasa Indonesia:
-- Coqui: tts_models/id/tts/vits/vits-id (natural, lokal)
-- Fallback: gTTS (Google TTS - GRATIS, cloud-based)
+Kokoro TTS:
+- Model 768M - hasil sangat natural seperti manusia
+- Open source, bisa dijalankan lokal
+- Bahasa Indonesia tersedia
+- Lebih ringan dari Coqui
 
-Catatan:
-- Coqui TTS memberi suara lebih natural seperti manusia
-- Butuh resource lebih banyak (RAM/CPU)
-- gTTS fallback bila Coqui gagal atau tidak tersedia
+Fallback: gTTS (Google TTS - GRATIS, cloud-based)
 """
 
 import logging
@@ -23,27 +22,54 @@ from io import BytesIO
 logger = logging.getLogger(__name__)
 
 # Check which TTS is available
-COQUI_AVAILABLE = False
+KOKORO_AVAILABLE = False
 GTTTS_AVAILABLE = False
 
 try:
-    from TTS.api import TTS
-    COQUI_AVAILABLE = True
-    logger.info("Coqui TTS tersedia - suara akan lebih natural")
+    import torch
+    from kokoro import Kokoro
+    KOKORO_AVAILABLE = True
+    logger.info("Kokoro TTS tersedia - suara sangat natural!")
 except ImportError:
-    logger.warning("Coqui TTS tidak tersedia, akan pakai gTTS")
+    logger.warning("Kokoro TTS tidak tersedia")
 
 try:
     from gtts import gTTS
     GTTTS_AVAILABLE = True
+    logger.info("gTTS tersedia sebagai fallback")
 except ImportError:
     logger.warning("gTTS tidak tersedia")
+
+
+# Cache model Kokoro
+_kokoro_model = None
+_kokoro_voice = None
+
+def _get_kokoro():
+    """Lazy load Kokoro model untuk hemat memory."""
+    global _kokoro_model, _kokoro_voice
+    
+    if _kokoro_model is None and KOKORO_AVAILABLE:
+        try:
+            # Muat model Bahasa Indonesia
+            _kokoro_model = Kokoro.for_open_chars(
+                model_path="gsxr/kokoro-tts-lite",
+                voice_dir="voices-v1.0"
+            )
+            # Dapatkan voice Indonesia
+            _kokoro_voice = _kokoro_model.load_voice("id")
+            logger.info("Kokoro model Indonesia berhasil dimuat")
+        except Exception as e:
+            logger.warning(f"Gagal load model Kokoro: {e}")
+            KOKORO_AVAILABLE = False
+    
+    return _kokoro_model, _kokoro_voice
 
 
 def text_to_speech(text: str, language: str = "id") -> bytes | None:
     """Ubah teks menjadi audio bytes yang bisa dikirim sebagai voice note.
     
-    Menggunakan Coqui TTS (lebih natural) dengan fallback ke gTTS.
+    Menggunakan Kokoro TTS (sangat natural) dengan fallback ke gTTS.
     
     Args:
         text: Teks yang akan diubah menjadi suara
@@ -58,45 +84,49 @@ def text_to_speech(text: str, language: str = "id") -> bytes | None:
 
     result = None
 
-    # 1. Coba Coqui TTS (lebih natural)
-    if COQUI_AVAILABLE:
+    # 1. Coba Kokoro TTS (sangat natural)
+    if KOKORO_AVAILABLE:
         try:
-            logger.debug("Mencoba Coqui TTS...")
-            from TTS.api import TTS
+            logger.debug("Mencoba Kokoro TTS...")
+            model, voice = _get_kokoro()
             
-            # Muat model Bahasa Indonesia
-            tts = TTS(model_name="tts_models/id/tts/vits/vits-id", progress_bar=False)
-            
-            # Generate audio
-            audio = tts.tts(text.strip())
-            
-            if audio is not None and len(audio) > 0:
-                # Konversi ke bytes
-                import soundfile as sf
-                import tempfile
+            if model is not None:
+                # Generate audio dengan Kokoro
+                audio = model.generate(text.strip(), voice)
                 
-                # Buat file temporary untuk soundfile
-                temp_path = f"/tmp/{uuid.uuid4().hex}.wav"
-                sf.write(temp_path, audio, tts.synthesizer.output_sample_rate)
-                
-                # Baca kembali sebagai bytes
-                with open(temp_path, "rb") as f:
-                    result = f.read()
-                
-                # Cleanup
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
-                
-                if result and len(result) > 0:
-                    logger.info(f"Coqui TTS berhasil ({len(result)} bytes)")
-                    return result
-                    
+                if audio is not None and len(audio) > 0:
+                    # Kokoro output biasanya Numpy array, konversi ke WAV/MP3
+                    if hasattr(audio, '__len__') and len(audio) > 0:
+                        import numpy as np
+                        audio_array = np.array(audio)
+                        
+                        # Simpan sebagai file WAV
+                        import tempfile
+                        temp_path = f"/tmp/{uuid.uuid4().hex}.wav"
+                        
+                        # Konversi ke WAV
+                        import soundfile as sf
+                        sample_rate = 22050  # Kokoro default
+                        sf.write(temp_path, audio_array, sample_rate)
+                        
+                        # Baca sebagai bytes
+                        with open(temp_path, "rb") as f:
+                            result = f.read()
+                        
+                        # Cleanup
+                        try:
+                            os.unlink(temp_path)
+                        except:
+                            pass
+                        
+                        if result and len(result) > 0:
+                            logger.info(f"Kokoro TTS berhasil ({len(result)} bytes)")
+                            return result
+                            
         except Exception as e:
-            logger.warning(f"Coqui TTS gagal: {e}")
+            logger.warning(f"Kokoro TTS gagal: {e}")
 
-    # 2. Fallback ke gTTS (GRATIS, cloud-based)
+    # 2. Fallback ke gTTS (Google TTS)
     if GTTTS_AVAILABLE:
         try:
             logger.debug("Mencoba gTTS fallback...")
@@ -119,7 +149,7 @@ def text_to_speech(text: str, language: str = "id") -> bytes | None:
 
 def is_tts_available() -> bool:
     """Cek apakah ada TTS yang tersedia."""
-    return COQUI_AVAILABLE or GTTTS_AVAILABLE
+    return KOKORO_AVAILABLE or GTTTS_AVAILABLE
 
 
 def create_voice_file(audio_bytes: bytes, filename: str = "voice.mp3") -> str:

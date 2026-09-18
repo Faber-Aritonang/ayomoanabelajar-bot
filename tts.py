@@ -2,50 +2,64 @@
 tts.py
 ======
 Text-to-Speech untuk bot Telegram.
-Menggunakan gTTS (Google Text-to-Speech) - GRATIS, tidak butuh API key.
+Menggunakan OpenAI TTS API - gratis tier tersedia.
 
-Catatan:
-- Untuk bahasa Indonesia, gunakan language='id'
-- gTTS menghasilkan MP3 yang Telegram menerima sebagai voice note
-- Tidak butuh konversi format ekstra - Telegram otomatis proses
+Fitur:
+- GPT-4o-mini-tts (opsional, lebih natural)
+- tts-1 (alloy, echo, onyx) - gratis tier tersedia
 
 Instalasi:
-    pip install gtts
+    pip install openai
 
-Catatan: gTTS membutuhkan koneksi internet untuk mengakses API Google.
-Untuk penggunaan offline, pertimbangkan Coqui TTS atau pyttsx3.
+Penggunaan:
+    OPENAI_API_KEY=isi_api_key_anda_di_.env
 """
 
 import logging
 import os
 import tempfile
 import uuid
-from io import BytesIO
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Lazy import gTTS untuk menghindari error jika tidak dipakai
+# OpenAI client lazy import
 try:
-    from gtts import gTTS
-    GTTTS_AVAILABLE = True
-    logger.info("gTTS tersedia untuk Text-to-Speech")
+    from openai import OpenAI as _OpenAIClient
+    OPENAI_AVAILABLE = True
+    _client: Optional[object] = None
+    logger.info("OpenAI TTS tersedia")
 except ImportError:
-    GTTTS_AVAILABLE = False
-    logger.warning("gTTS tidak tersedia. Install dengan: pip install gtts")
+    OPENAI_AVAILABLE = False
+    _client = None
+    logger.warning("OpenAI tidak tersedia. Install dengan: pip install openai")
 
 
-def text_to_speech(text: str, language: str = "id") -> bytes | None:
+def get_openai_client():
+    """Lazy init OpenAI client."""
+    global _client
+    if _client is None and OPENAI_AVAILABLE:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            _client = _OpenAIClient(api_key=api_key)
+        else:
+            logger.warning("OPENAI_API_KEY tidak ditemukan di environment")
+    return _client
+
+
+def text_to_speech(text: str, language: str = "id", voice: str = "alloy") -> Optional[bytes]:
     """Ubah teks menjadi audio bytes yang bisa dikirim sebagai voice note.
 
     Args:
         text: Teks yang akan diubah menjadi suara
         language: Kode bahasa (default 'id' untuk Bahasa Indonesia)
+        voice: Suara OpenAI TTS (alloy, echo, onyx) - default alloy
 
     Returns:
         Bytes audio MP3, atau None jika gagal
     """
-    if not GTTTS_AVAILABLE:
-        logger.error("gTTS tidak tersedia")
+    if not OPENAI_AVAILABLE:
+        logger.error("OpenAI tidak tersedia")
         return None
 
     if not text or not text.strip():
@@ -53,29 +67,40 @@ def text_to_speech(text: str, language: str = "id") -> bytes | None:
         return None
 
     try:
-        # gTTS menghasilkan MP3 - Telegram mendukung MP3 sebagai voice note
-        tts = gTTS(text=text.strip(), lang=language, slow=False)
-
-        # Simpan ke buffer
-        buffer = BytesIO()
-        tts.write_to_fp(buffer)
-        audio_bytes = buffer.getvalue()
-
-        if len(audio_bytes) == 0:
-            logger.warning("gTTS menghasilkan audio kosong")
+        openai_client = get_openai_client()
+        if openai_client is None:
+            logger.error("OpenAI client tidak tersedia")
             return None
 
-        logger.info("Berhasil mengubah teks ke audio (%d bytes)", len(audio_bytes))
+        # OpenAI TTS API
+        response = openai_client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=text.strip()
+        )
+
+        # Dapatkan audio bytes
+        audio_bytes = response.content
+        
+        if len(audio_bytes) == 0:
+            logger.warning("OpenAI TTS menghasilkan audio kosong")
+            return None
+
+        logger.info("Berhasil mengubah teks ke audio via OpenAI TTS (%d bytes)", len(audio_bytes))
         return audio_bytes
 
     except Exception as e:
-        logger.error("Gagal konversi teks ke audio: %s", e)
+        logger.error("Gagal konversi teks ke audio via OpenAI: %s", e)
         return None
 
 
 def is_tts_available() -> bool:
-    """Cek apakah gTTS tersedia dan bisa dipakai."""
-    return GTTTS_AVAILABLE
+    """Cek apakah OpenAI TTS tersedia dan bisa dipakai."""
+    if not OPENAI_AVAILABLE:
+        return False
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    return api_key is not None and api_key.strip() != ""
 
 
 def create_voice_file(audio_bytes: bytes, filename: str = "voice.mp3") -> str:

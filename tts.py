@@ -2,20 +2,21 @@
 tts.py
 ======
 Text-to-Speech untuk bot Telegram.
-Menggunakan OpenAI TTS (primary) + Coqui TTS Ekho (fallback natural).
+Menggunakan OpenAI TTS (primary) + Piper TTS (fallback).
 
-Model Coqui Ekho:
-- Voice natural seperti manusia
-- Cocok untuk anak
+Model Piper:
+- Ringan & cepat
 - Bahasa Indonesia tersedia
+- Python 3.14 compatible
 
 Flow:
 1. Coba OpenAI TTS jika OPENAI_API_KEY tersedia
-2. Jika gagal/kehabisan credit, fallback ke Coqui TTS Ekho
+2. Jika gagal/kehabisan credit, fallback ke Piper TTS
 """
 
 import logging
 import os
+import subprocess
 import tempfile
 import uuid
 from typing import Optional
@@ -42,51 +43,41 @@ def get_openai_client():
     return openai_client if openai_client else None
 
 
-# ============= Coqui TTS Ekho (Fallback Natural) =============
+# ============= Piper TTS (Fallback Natural) =============
 try:
-    from TTS.api import TTS as CoquiTTS
-    COQUI_AVAILABLE = True
-    coqui_model = None
-    logger.info("Coqui TTS tersedia")
+    from piper import Piper
+    PIPER_AVAILABLE = True
+    piper_instance = None
+    logger.info("Piper TTS tersedia")
 except ImportError:
-    COQUI_AVAILABLE = False
-    coqui_model = None
-    logger.info("Coqui TTS tidak tersedia")
+    PIPER_AVAILABLE = False
+    piper_instance = None
+    logger.info("Piper TTS tidak tersedia")
 
-def get_coqui_model():
-    """Lazy init Coqui TTS model Ekho untuk Bahasa Indonesia - voice natural."""
-    global coqui_model
-    if coqui_model is None and COQUI_AVAILABLE:
+def get_piper_instance():
+    """Lazy init Piper TTS untuk Bahasa Indonesia."""
+    global piper_instance
+    if piper_instance is None and PIPER_AVAILABLE:
         try:
-            # Model Ekho - voice natural untuk Bahasa Indonesia
-            # Lebih natural daripada gTTS, cocok untuk anak
-            coqui_model = CoquiTTS(
-                model_name="tts_models/id/ekho/tts_vits",
-                progress_bar=False,
-                gpu=False  # Render free tier tidak pakai GPU
+            # Model Bahasa Indonesia natural
+            # Piper otomatis download model kalau belum ada
+            piper_instance = Piper(
+                model="thdq_hisr_id-id.onnx",  # Model Bahasa Indonesia
+                use_cuda=False
             )
-            logger.info("Coqui TTS Ekho model loaded (voice natural)")
+            logger.info("Piper TTS model loaded (voice natural Indonesia)")
         except Exception as e:
-            logger.warning(f"Gagal load model Coqui Ekho: {e}")
-    return coqui_model
+            logger.warning(f"Gagal load model Piper: {e}")
+    return piper_instance
 
-def get_coqui_voice_settings():
-    """Voice settings untuk hasil natural, tidak terlalu robot."""
-    return {
-        "speed": 1.0,           # Speed normal (jangan > 1.3)
-        "length_scale": 1.0,    # Normal speaking rate
-        "noise_scale": 0.33,    # Natural noise level
-        "pitch_scale": 1.0,     # Normal pitch
-        "volume_scale": 1.0,    # Normal volume
-    }
-
+PIPER_BINARY = "/opt/render/.piper/bin/piper"
 
 def text_to_speech(text: str, language: str = "id", voice: str = "onyx") -> Optional[bytes]:
     """Ubah teks menjadi audio bytes dengan voice natural.
     
     Priority:
     1. OpenAI TTS (voice onyx - sangat natural)
-    2. Coqui TTS Ekho (voice natural lokal)
+    2. Piper TTS (voice natural Bahasa Indonesia)
     """
     if not text or not text.strip():
         logger.warning("Teks kosong")
@@ -110,36 +101,49 @@ def text_to_speech(text: str, language: str = "id", voice: str = "onyx") -> Opti
             except Exception as e:
                 logger.warning(f"OpenAI TTS gagal: {e}")
 
-    # ============= Fallback Coqui TTS Ekho =============
-    if COQUI_AVAILABLE:
+    # ============= Fallback Piper TTS =============
+    if PIPER_AVAILABLE:
         try:
-            model = get_coqui_model()
-            if model:
-                voice_settings = get_coqui_voice_settings()
-                temp_path = f"/tmp/tts_coqui_{uuid.uuid4().hex}.wav"
+            model_path = get_piper_model_path()
+            if os.path.exists(model_path):
+                temp_wav = f"/tmp/piper_{uuid.uuid4().hex}.wav"
                 
-                # Generate dengan settings natural
-                model.tts_to_file(
-                    text=text.strip(),
-                    file_path=temp_path,
-                    language=language,
-                    speed=voice_settings["speed"],
-                    length_scale=voice_settings["length_scale"],
-                    noise_scale=voice_settings["noise_scale"],
-                    pitch_scale=voice_settings["pitch_scale"]
-                )
+                # Run piper binary
+                cmd = [
+                    PIPER_BINARY,
+                    f"--model {model_path}",
+                    f"--output_file {temp_wav}",
+                    f"--text '{text.strip()}'"
+                ]
                 
-                with open(temp_path, "rb") as f:
-                    audio_bytes = f.read()
+                result = subprocess.run(" ".join(cmd), shell=True, capture_output=True)
                 
-                os.remove(temp_path)
-                logger.info(f"Coqui TTS Ekho berhasil ({len(audio_bytes)} bytes) - voice natural")
-                return audio_bytes
+                if result.returncode == 0 and os.path.exists(temp_wav):
+                    with open(temp_wav, "rb") as f:
+                        audio_bytes = f.read()
+                    os.remove(temp_wav)
+                    logger.info(f"Piper TTS berhasil ({len(audio_bytes)} bytes) - voice natural Indonesia")
+                    return audio_bytes
+                else:
+                    logger.error(f"Piper error: {result.stderr.decode() if result.stderr else 'unknown'}")
         except Exception as e:
-            logger.error(f"Coqui TTS gagal: {e}")
+            logger.error(f"Piper TTS gagal: {e}")
 
     logger.error("Tidak ada TTS yang tersedia")
     return None
+
+
+def get_piper_model_path():
+    """Cari path model Piper - coba beberapa lokasi."""
+    paths = [
+        "/opt/render/.piper_models/thdq_hisr_id-id.onnx",
+        "/opt/render/piper-models/thdq_hisr_id-id.onnx",
+        "./models/thdq_hisr_id-id.onnx",
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return paths[0]  # Default path (akan download oleh Piper bila diperlukan)
 
 
 def is_tts_available() -> bool:
@@ -150,8 +154,8 @@ def is_tts_available() -> bool:
         if api_key and api_key.strip():
             return True
     
-    # Coqui available (always works offline, natural voice)
-    if COQUI_AVAILABLE:
+    # Piper available (always works offline, natural voice)
+    if PIPER_AVAILABLE:
         return True
     
     return False

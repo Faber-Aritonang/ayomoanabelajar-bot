@@ -47,13 +47,12 @@ def get_openai_client():
     return _client
 
 
-def text_to_speech(text: str, language: str = "id", voice: str = "alloy") -> Optional[bytes]:
+def text_to_speech(text: str, language: str = "id", voice: str = "onyx") -> Optional[bytes]:
     """Ubah teks menjadi audio bytes yang bisa dikirim sebagai voice note.
 
     Args:
         text: Teks yang akan diubah menjadi suara
-        language: Kode bahasa (default 'id' untuk Bahasa Indonesia)
-        voice: Suara OpenAI TTS (alloy, echo, onyx) - default alloy
+        voice: Suara OpenAI TTS (alloy, echo, onyx) - default onyx (lebih natural)
 
     Returns:
         Bytes audio MP3, atau None jika gagal

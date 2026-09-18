@@ -2,14 +2,16 @@
 tts.py
 ======
 Text-to-Speech untuk bot Telegram.
-Menggunakan OpenAI TTS (primary) + Coqui TTS (fallback).
+Menggunakan OpenAI TTS (primary) + Coqui TTS Ekho (fallback natural).
+
+Model Coqui Ekho:
+- Voice natural seperti manusia
+- Cocok untuk anak
+- Bahasa Indonesia tersedia
 
 Flow:
 1. Coba OpenAI TTS jika OPENAI_API_KEY tersedia
-2. Jika gagal/kehabisan credit, fallback ke Coqui TTS lokal
-
-Instalasi OpenAI: pip install openai
-Instalasi Coqui: pip install TTS
+2. Jika gagal/kehabisan credit, fallback ke Coqui TTS Ekho
 """
 
 import logging
@@ -28,6 +30,7 @@ try:
     logger.info("OpenAI TTS tersedia")
 except ImportError:
     OPENAI_AVAILABLE = False
+    openai_client = None
     logger.info("OpenAI tidak tersedia")
 
 def get_openai_client():
@@ -39,7 +42,7 @@ def get_openai_client():
     return openai_client if openai_client else None
 
 
-# ============= Coqui TTS (Fallback) =============
+# ============= Coqui TTS Ekho (Fallback Natural) =============
 try:
     from TTS.api import TTS as CoquiTTS
     COQUI_AVAILABLE = True
@@ -47,27 +50,43 @@ try:
     logger.info("Coqui TTS tersedia")
 except ImportError:
     COQUI_AVAILABLE = False
+    coqui_model = None
     logger.info("Coqui TTS tidak tersedia")
 
 def get_coqui_model():
-    """Lazy init Coqui TTS model untuk Bahasa Indonesia."""
+    """Lazy init Coqui TTS model Ekho untuk Bahasa Indonesia - voice natural."""
     global coqui_model
     if coqui_model is None and COQUI_AVAILABLE:
         try:
-            # Model Bahasa Indonesia - voice natural
-            coqui_model = CoquiTTS(model_name="tts_models/id/ekho/tts_vits")
-            logger.info("Coqui TTS model loaded")
+            # Model Ekho - voice natural untuk Bahasa Indonesia
+            # Lebih natural daripada gTTS, cocok untuk anak
+            coqui_model = CoquiTTS(
+                model_name="tts_models/id/ekho/tts_vits",
+                progress_bar=False,
+                gpu=False  # Render free tier tidak pakai GPU
+            )
+            logger.info("Coqui TTS Ekho model loaded (voice natural)")
         except Exception as e:
-            logger.warning(f"Gagal load model Coqui: {e}")
-    return coqui_model if coqui_model else None
+            logger.warning(f"Gagal load model Coqui Ekho: {e}")
+    return coqui_model
+
+def get_coqui_voice_settings():
+    """Voice settings untuk hasil natural, tidak terlalu robot."""
+    return {
+        "speed": 1.0,           # Speed normal (jangan > 1.3)
+        "length_scale": 1.0,    # Normal speaking rate
+        "noise_scale": 0.33,    # Natural noise level
+        "pitch_scale": 1.0,     # Normal pitch
+        "volume_scale": 1.0,    # Normal volume
+    }
 
 
 def text_to_speech(text: str, language: str = "id", voice: str = "onyx") -> Optional[bytes]:
-    """Ubah teks menjadi audio bytes.
+    """Ubah teks menjadi audio bytes dengan voice natural.
     
     Priority:
-    1. OpenAI TTS (jika API key tersedia)
-    2. Coqui TTS (local fallback)
+    1. OpenAI TTS (voice onyx - sangat natural)
+    2. Coqui TTS Ekho (voice natural lokal)
     """
     if not text or not text.strip():
         logger.warning("Teks kosong")
@@ -90,21 +109,31 @@ def text_to_speech(text: str, language: str = "id", voice: str = "onyx") -> Opti
                     return audio_bytes
             except Exception as e:
                 logger.warning(f"OpenAI TTS gagal: {e}")
-                # Continue to Coqui fallback
 
-    # ============= Fallback Coqui TTS =============
+    # ============= Fallback Coqui TTS Ekho =============
     if COQUI_AVAILABLE:
         try:
             model = get_coqui_model()
             if model:
+                voice_settings = get_coqui_voice_settings()
                 temp_path = f"/tmp/tts_coqui_{uuid.uuid4().hex}.wav"
-                model.tts_to_file(text=text.strip(), file_path=temp_path, language=language)
+                
+                # Generate dengan settings natural
+                model.tts_to_file(
+                    text=text.strip(),
+                    file_path=temp_path,
+                    language=language,
+                    speed=voice_settings["speed"],
+                    length_scale=voice_settings["length_scale"],
+                    noise_scale=voice_settings["noise_scale"],
+                    pitch_scale=voice_settings["pitch_scale"]
+                )
                 
                 with open(temp_path, "rb") as f:
                     audio_bytes = f.read()
                 
                 os.remove(temp_path)
-                logger.info(f"Coqui TTS berhasil ({len(audio_bytes)} bytes)")
+                logger.info(f"Coqui TTS Ekho berhasil ({len(audio_bytes)} bytes) - voice natural")
                 return audio_bytes
         except Exception as e:
             logger.error(f"Coqui TTS gagal: {e}")
@@ -121,7 +150,7 @@ def is_tts_available() -> bool:
         if api_key and api_key.strip():
             return True
     
-    # Coqui available (always works offline)
+    # Coqui available (always works offline, natural voice)
     if COQUI_AVAILABLE:
         return True
     

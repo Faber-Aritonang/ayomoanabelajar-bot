@@ -359,7 +359,10 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
 
     # Selalu kirim juga sebagai voice note (TTS otomatis aktif)
     if tts.is_tts_available():
+        logger.info("TTS available - sending voice reply")
         await send_voice_reply(update, context, reply)
+    else:
+        logger.info("TTS NOT available - OPENAI_API_KEY mungkin tidak ada")
 
 
 async def send_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, reply_text: str):

@@ -16,6 +16,8 @@ Kode keluar: 0 = semua lulus, 1 = ada yang gagal.
 
 import os
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 # Pakai database test terpisah supaya data asli pengguna tidak tercemar.
 # (Harus diset SEBELUM import database/whatsapp_bot.)
@@ -51,6 +53,13 @@ class FakeClient:
 
     def send_message(self, to, msg):
         self.sent.append((str(to.User), msg))
+
+    def upload(self, audio, media_type):
+        self.uploaded_audio = audio
+        self.media_type = media_type
+        return SimpleNamespace(url="https://example.test/audio", DirectPath="/audio",
+                               FileEncSHA256=b"enc", FileLength=len(audio),
+                               FileSHA256=b"sha", MediaKey=b"key")
 
     def download_any(self, message):
         """Tiruan download media voice note — kembalikan byte audio palsu."""
@@ -126,6 +135,34 @@ def main():
     # Ganti transkripsi suara dengan stub — tes tidak boleh memanggil Groq.
     wb.stt.transcribe_audio = lambda audio_bytes, filename="voice.ogg": "berapa hasil dua tambah dua"
     wb._current_client = client
+    # Periksa pengiriman voice note dan fallback teks tanpa koneksi jaringan.
+    async def fake_tts(text, language="id"):
+        return b"fake-mp3"
+    ev = make_event("tes")
+    with patch.object(wb.tts, "is_tts_available", return_value=True), \
+         patch.object(wb.tts, "text_to_speech", fake_tts), \
+         patch.object(wb, "_voice_note_audio", return_value=(b"OggS-fake", 2)):
+        wb._send_voice_reply(client, ev, "Halo")
+    jid, voice = client.sent.pop()
+    assert jid == PHONE and voice.audioMessage.PTT
+    assert voice.audioMessage.mimetype == "audio/ogg; codecs=opus"
+    assert voice.audioMessage.seconds == 2 and client.media_type == wb.MediaType.MediaAudio
+    assert client.uploaded_audio == b"OggS-fake"
+    with patch.object(wb.tts, "is_tts_available", return_value=True), \
+         patch.object(wb.tts, "text_to_speech", fake_tts), \
+         patch.object(wb, "_voice_note_audio", side_effect=RuntimeError("konversi gagal")):
+        wb._send(client, ev, "Teks tetap ada")
+        wb._send_voice_reply(client, ev, "Teks tetap ada")
+    assert client.sent.pop()[1] == "Teks tetap ada"
+    phone = "6281999999999"
+    wb._state(phone)["subject"] = "matematika"
+    wb._state(phone)["reset_marker"] = True
+    with patch.object(wb, "_send_voice_reply") as voice_reply:
+        wb.handle_chat(client, ev, phone, "Berapa 2+2?")
+        voice_reply.assert_called_once_with(client, ev, "AI uji: Berapa 2+2?")
+    assert client.sent.pop()[1] == "AI uji: Berapa 2+2?"
+    # Hindari panggilan TTS dan upload jaringan di pengujian offline umum.
+    wb._send_voice_reply = lambda client, ev, text: None
 
     results = []
 

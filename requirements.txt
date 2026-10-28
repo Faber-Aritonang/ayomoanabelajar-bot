@@ -13,6 +13,7 @@ jiter==0.16.0
 openai==1.84.0
 gtts==2.5.1
 edge-tts==7.3.1
+imageio-ffmpeg==0.6.0
 psycopg[binary]==3.3.4
 pydantic==2.13.2
 python-dotenv==1.2.2

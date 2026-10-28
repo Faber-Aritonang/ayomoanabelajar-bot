@@ -2,6 +2,9 @@
 
 import asyncio
 import logging
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +17,31 @@ from sqlalchemy.orm import sessionmaker
 import database
 import telegram_bot
 import tts
+
+
+class DatabaseConnectionTests(unittest.TestCase):
+    def test_postgres_engine_enables_pre_ping(self):
+        env = dict(os.environ, DATABASE_URL="postgresql://test:test@localhost/test")
+        result = subprocess.run(
+            [sys.executable, "-c", "import database; assert database.engine.pool._pre_ping"],
+            env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_stale_pooled_connection_is_replaced_before_write(self):
+        engine = create_engine("sqlite://", pool_pre_ping=True)
+        try:
+            with engine.connect() as conn:
+                conn.exec_driver_sql("CREATE TABLE pool_test (value INTEGER)")
+                conn.commit()
+                stale = conn.connection.driver_connection
+            stale.close()  # Simulasikan server yang menutup koneksi idle.
+            with engine.begin() as conn:
+                conn.exec_driver_sql("CREATE TABLE pool_test (value INTEGER)")
+                conn.exec_driver_sql("INSERT INTO pool_test VALUES (1)")
+                self.assertEqual(conn.exec_driver_sql("SELECT value FROM pool_test").scalar_one(), 1)
+        finally:
+            engine.dispose()
 
 
 class LoggingTests(unittest.TestCase):

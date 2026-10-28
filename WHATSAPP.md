@@ -74,10 +74,16 @@ Sejak **v1.4.4**:
 
 Sejak **v1.4.3**, bot WhatsApp bisa menerima **voice note** (tahan ikon
 mikrofon) — audio ditranskripsi via **Groq Whisper** (gratis, Bahasa
-Indonesia) lalu dijawab seperti pesan teks biasa. Anak juga diberi tahu
+Indonesia) lalu diproses seperti pesan teks biasa. Anak juga diberi tahu
 teks yang tertangkap agar bisa mengoreksi kalau transkripsinya keliru.
+Jawaban percakapan dikirim sebagai teks dan voice note, baik pertanyaan
+berupa teks maupun voice note. Voice note memakai Edge TTS suara perempuan
+Indonesia `id-ID-GadisNeural`, dengan gTTS sebagai cadangan. Jika suara gagal,
+balasan teks tetap tersedia. Pilihan suara belum tersedia di WhatsApp.
+Edge TTS adalah layanan daring tidak resmi; kedua TTS memerlukan internet.
 
 - Wajib punya `GROQ_API_KEY` di `.env` / env vars Render (lihat `.env.example`).
+- `imageio-ffmpeg` (terpasang lewat `requirements.txt`) diperlukan untuk mengubah audio ke format Ogg Opus voice note.
 - Maksimal **2 menit** per voice note; file audio biasa (lagu, rekaman
   non-PTT) ditolak dengan pesan ramah.
 - Batas gratis Groq: 2.000 request/hari — lebih dari cukup untuk pemakaian normal.

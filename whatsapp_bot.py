@@ -31,8 +31,11 @@ Perintah yang dikenali (WhatsApp tidak punya tombol, semua lewat teks):
     🎤 voice note           -> tanya dengan suara (transkripsi otomatis, Groq Whisper)
 """
 
+import asyncio
 import json
 import logging
+import math
+import subprocess
 import os
 import threading
 import time
@@ -47,6 +50,7 @@ import database
 import quiz
 import reminders
 import stt
+import tts
 import whitelist
 from llm import get_ai_reply
 from subjects import get_subject, list_subjects
@@ -54,6 +58,7 @@ from subjects import get_subject, list_subjects
 load_dotenv()
 
 from neonize import NewClient
+from neonize.client import AudioMessage, MediaType, Message
 from neonize.proto.Neonize_pb2 import Message as MessageEv
 from neonize.utils import JIDToNonAD, build_jid
 from neonize.utils.enum import ClientName
@@ -289,6 +294,63 @@ def handle_voice(client, ev, phone):
     handle_chat(client, ev, phone, user_text)
 
 
+def _voice_note_audio(mp3_bytes):
+    """Konversi MP3 TTS ke Ogg Opus dan ambil durasi untuk WhatsApp."""
+    import imageio_ffmpeg
+
+    result = subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+         "-i", "pipe:0", "-vn", "-c:a", "libopus", "-ac", "1",
+         "-f", "ogg", "pipe:1"],
+        input=mp3_bytes, capture_output=True, check=True, timeout=60,
+    )
+    audio = result.stdout
+    offset = 0
+    granule = 0
+    while offset < len(audio):
+        if audio[offset:offset + 4] != b"OggS" or offset + 27 > len(audio):
+            raise ValueError("Audio Ogg tidak valid")
+        segments = audio[offset + 26]
+        header_end = offset + 27 + segments
+        if header_end > len(audio):
+            raise ValueError("Header Ogg tidak lengkap")
+        page_end = header_end + sum(audio[offset + 27:header_end])
+        if page_end > len(audio):
+            raise ValueError("Halaman Ogg tidak lengkap")
+        position = int.from_bytes(audio[offset + 6:offset + 14], "little")
+        if position != (1 << 64) - 1:
+            granule = position
+        offset = page_end
+    opus_head = audio.find(b"OpusHead")
+    if opus_head < 0 or opus_head + 12 > len(audio) or not granule:
+        raise ValueError("Audio Opus tidak valid")
+    preskip = int.from_bytes(audio[opus_head + 10:opus_head + 12], "little")
+    duration = max(1, math.ceil((granule - preskip) / 48000))
+    return audio, duration
+
+
+def _send_voice_reply(client, ev, text):
+    """Kirim voice note tambahan; jika gagal balasan teks tetap tersedia."""
+    if not tts.is_tts_available():
+        return
+    try:
+        mp3 = asyncio.run(tts.text_to_speech(text, language="id"))
+        if not mp3:
+            logger.warning("TTS WhatsApp tidak menghasilkan audio")
+            return
+        audio, duration = _voice_note_audio(mp3)
+        upload = client.upload(audio, MediaType.MediaAudio)
+        message = Message(audioMessage=AudioMessage(
+            URL=upload.url, seconds=duration, directPath=upload.DirectPath,
+            fileEncSHA256=upload.FileEncSHA256, fileLength=upload.FileLength,
+            fileSHA256=upload.FileSHA256, mediaKey=upload.MediaKey,
+            mimetype="audio/ogg; codecs=opus", PTT=True,
+        ))
+        client.send_message(ev.Info.MessageSource.Chat, message)
+    except Exception:
+        logger.exception("Gagal mengirim voice note WhatsApp")
+
+
 def handle_chat(client, ev, phone, text):
     st = _state(phone)
     subject_key = st.get("subject")
@@ -318,6 +380,7 @@ def handle_chat(client, ev, phone, text):
     database.save_message(phone, phone, subject_key, "assistant", reply)
 
     _send(client, ev, reply)
+    _send_voice_reply(client, ev, reply)
 
 
 def handle_quiz(client, ev, phone):

@@ -53,6 +53,13 @@ class QuizScoreModel(Base):
     timestamp = Column(String)
 
 
+class TelegramVoiceModel(Base):
+    __tablename__ = "telegram_voice_preferences"
+
+    user_id = Column(String, primary_key=True)
+    voice = Column(String, nullable=False)
+
+
 class WhitelistModel(Base):
     __tablename__ = "whitelist"
 
@@ -82,6 +89,30 @@ def save_quiz_score(user_id, username, subject, score, total_questions):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+def get_telegram_voice(user_id):
+    """Ambil pilihan suara Telegram, atau None jika belum dipilih."""
+    db = SessionLocal()
+    try:
+        row = db.get(TelegramVoiceModel, str(user_id))
+        return row.voice if row else None
+    finally:
+        db.close()
+
+
+def set_telegram_voice(user_id, voice):
+    """Simpan pilihan suara Telegram per pengguna."""
+    db = SessionLocal()
+    try:
+        row = db.get(TelegramVoiceModel, str(user_id))
+        if row is None:
+            db.add(TelegramVoiceModel(user_id=str(user_id), voice=voice))
+        else:
+            row.voice = voice
+        db.commit()
+    finally:
+        db.close()
+
 
 def save_message(user_id, username, subject, role, message):
     db = SessionLocal()

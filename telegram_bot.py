@@ -68,6 +68,14 @@ class WhitelistedFilter(filters.BaseFilter):
 
 
 WL_FILTER = WhitelistedFilter()
+VOICE_CHOICES = {"perempuan": "id-ID-GadisNeural", "laki-laki": "id-ID-ArdiNeural"}
+
+
+def build_voice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("👩 Suara perempuan", callback_data="voice:perempuan"),
+        InlineKeyboardButton("👨 Suara laki-laki", callback_data="voice:laki-laki"),
+    ]])
 
 
 def build_subject_keyboard() -> InlineKeyboardMarkup:
@@ -96,6 +104,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/menu - ganti mata pelajaran\n"
         "/streak - lihat streak belajar harianmu 🔥\n"
         "/reset - mulai obrolan baru (lupakan obrolan sebelumnya)\n"
+        "/suara - pilih suara balasan\n"
         "/help - tampilkan bantuan ini\n\n"
         "🎤 *Mode Suara:* kirim pesan suara (voice note) untuk bertanya "
         "dengan bicara — Kak Moana akan mendengarkan dan menjawabnya!\n"
@@ -103,6 +112,34 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Setelah pilih pelajaran, langsung saja kirim pertanyaanmu ya! 😊"
     )
     await update.message.reply_markdown(text)
+async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pilih suara balasan untuk pengguna."""
+    choice = " ".join(context.args).lower()
+    if choice not in VOICE_CHOICES:
+        await update.message.reply_text(
+            "Pilih suara balasan, atau ketik /suara perempuan atau /suara laki-laki ya!",
+            reply_markup=build_voice_keyboard(),
+        )
+        return
+    database.set_telegram_voice(update.effective_user.id, VOICE_CHOICES[choice])
+    await update.message.reply_text(f"Oke, suara balasan dipilih: {choice}. 🎙️")
+
+
+async def voice_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    if not whitelist.is_allowed(str(user.id), platform="telegram"):
+        await query.answer(whitelist.REJECT_TEXT, show_alert=True)
+        return
+    choice = query.data.split(":", 1)[1]
+    if choice not in VOICE_CHOICES:
+        await query.answer("Pilihan suara tidak dikenal.", show_alert=True)
+        return
+    database.set_telegram_voice(user.id, VOICE_CHOICES[choice])
+    await query.answer(f"Suara {choice} dipilih.")
+    await query.message.reply_text(f"Oke, suara balasan dipilih: {choice}. 🎙️")
+
+
 async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Perintah /streak — tampilkan jumlah hari belajar berturut-turut."""
     user = update.effective_user
@@ -362,7 +399,7 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
         logger.info("TTS available - sending voice reply")
         await send_voice_reply(update, context, reply)
     else:
-        logger.info("TTS NOT available - OPENAI_API_KEY mungkin tidak ada")
+        logger.info("TTS tidak tersedia - Edge TTS dan gTTS belum terpasang")
 
 
 async def send_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, reply_text: str):
@@ -371,7 +408,9 @@ async def send_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     temp_path = None
     
     # Hasil konversi TTS
-    audio_bytes = tts.text_to_speech(reply_text, language="id")
+    audio_bytes = await tts.text_to_speech(
+        reply_text, language="id", voice=database.get_telegram_voice(user_id) or "id-ID-GadisNeural"
+    )
     if audio_bytes is None:
         logger.warning("Gagal konversi TTS untuk user %s", user_id)
         return
@@ -483,6 +522,7 @@ def main():
     app.add_handler(CommandHandler("kuis", kuis_command, filters=WL_FILTER))
     app.add_handler(CommandHandler("streak", streak_command, filters=WL_FILTER))
     app.add_handler(CommandHandler("help", help_command, filters=WL_FILTER))
+    app.add_handler(CommandHandler("suara", voice_command, filters=WL_FILTER))
     app.add_handler(CommandHandler("reset", reset, filters=WL_FILTER))
     # Perintah admin whitelist — tetap terpasang walau whitelist nonaktif,
     # is_admin di dalamnya yang memastikan hanya admin yang bisa pakai.
@@ -492,6 +532,7 @@ def main():
     # Catatan: CallbackQueryHandler (PTB >= 21) tidak menerima argumen `filters`;
     # cek whitelist dilakukan di dalam handler subject_chosen.
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
+    app.add_handler(CallbackQueryHandler(voice_chosen, pattern=r"^voice:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & WL_FILTER, handle_message))
     app.add_handler(MessageHandler(filters.VOICE & WL_FILTER, handle_voice))
 
@@ -679,13 +720,14 @@ async def menu_command(update, context):
     pesan += "• /start - Pilih pelajaran dan mulai obrolan\n"
     pesan += "• /kuis - Uji kemampuan dengan soal adaptif\n"
     pesan += "• /bintang - Lihat koleksi bintang prestasimu ⭐\n"
-    pesan += "• /streak - Lihat streak belajar harianmu 🔥\n\n"
+    pesan += "• /streak - Lihat streak belajar harianmu 🔥\n"
+    pesan += "• /suara - Pilih suara balasan 🎙️\n\n"
     pesan += "👨‍👩‍👧 *Area Pantauan (Untuk Orang Tua):*\n"
     pesan += "• /laporan - Cek angka keaktifan harian\n"
     pesan += "• /rapor - Baca analisis evaluasi dari AI Tutor\n\n"
     pesan += "Ketik salah satu perintah di atas kapan saja ya!"
     
-    await update.message.reply_markdown(pesan)
+    await update.message.reply_markdown(pesan, reply_markup=build_voice_keyboard())
 
 
 if __name__ == "__main__":

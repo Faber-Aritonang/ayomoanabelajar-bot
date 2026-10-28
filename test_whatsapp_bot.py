@@ -411,6 +411,18 @@ def main():
     wb.whitelist.ENABLED = False
     wb.whitelist.ADMIN_WHATSAPP = ""
 
+    # --- Watchdog sesi login (QR kedaluwarsa tanpa scan) ---
+    t = wb.LOGIN_WINDOW_TIMEOUT
+    cases = [
+        ("terhubung -> tidak restart", (t + 500, 0, 0, True), False),
+        ("baru mulai -> tunggu QR", (5, 0, 0, False), False),
+        ("QR baru dibuat -> tidak restart", (t + 10, t + 5, 0, False), False),
+        ("QR berhenti & belum login -> restart", (t + 120, t + 10, 0, False), True),
+    ]
+    for name, args, expected in cases:
+        got = wb._should_restart_connection(*args)
+        results.append((f"watchdog: {name}", got is expected, "OK" if got is expected else f"harus {expected}, ternyata {got}"))
+
     # --- Keamanan halaman /qr ---
     handler = wb.BotHTTPHandler.__new__(wb.BotHTTPHandler)
     handler._is_connected = lambda: False

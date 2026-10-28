@@ -37,6 +37,7 @@ import logging
 import math
 import subprocess
 import os
+import sys
 import threading
 import time
 import urllib.request
@@ -102,6 +103,13 @@ RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
 # Interval cek pengingat belajar (detik). reminder_job_once hanya mengirim
 # pada jam yang dikonfigurasi (REMINDER_HOUR), jadi cek rutin tidak spam.
 REMINDER_CHECK_INTERVAL = 1800  # 30 menit
+
+# whatsmeow menghentikan sesi login setelah ~160 detik tanpa scan, dan
+# connect() tidak pernah kembali setelah itu. Watchdog memulai ulang proses
+# kalau tidak ada QR baru maupun koneksi dalam LOGIN_WINDOW_TIMEOUT detik.
+LOGIN_WINDOW_TIMEOUT = 60  # detik
+_LAST_QR_AT = time.monotonic()
+_STARTED_AT = time.monotonic()
 
 
 # --------------------------------------------------------------------------
@@ -724,13 +732,14 @@ def on_message(client: NewClient, ev: MessageEv):
 
 def on_qr(client: NewClient, data_qr: bytes):
     """Simpan QR terbaru (PNG) supaya bisa discan dari halaman /qr."""
-    global _latest_qr_png
+    global _latest_qr_png, _LAST_QR_AT
+    _LAST_QR_AT = time.monotonic()
     try:
         import segno
 
         qr = segno.make_qr(data_qr)
         buf = BytesIO()
-        qr.save(buf, kind="png", scale=4, border=2)
+        qr.save(buf, kind="png", scale=8, border=4)
         _latest_qr_png = buf.getvalue()
         logger.info("QR code baru tersedia — buka /qr atau scan dari terminal.")
         # Tampilkan juga versi ASCII di log terminal (berguna saat lokal).
@@ -745,6 +754,46 @@ def on_paircode(client: NewClient, code: str, connected: bool):
         logger.info("Terautentikasi dengan pair code: %s", code)
     else:
         logger.info("Pairing Code (WhatsApp > Perangkat Tertaut > Hubungkan dengan Nomor Telepon): %s", code)
+
+
+def _qr_page_html(token_suffix: str) -> str:
+    """Halaman scan QR yang memperbarui gambar otomatis (QR cepat kedaluwarsa)."""
+    separator = "&" if token_suffix else "?"
+    image_url = f"/qr.png{token_suffix}"
+    return f"""<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tautkan WhatsApp — {BOT_NAME}</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; background: #111; color: #eee;
+          margin: 0; padding: 24px; text-align: center; }}
+  h1 {{ font-size: 1.25rem; font-weight: 600; }}
+  img {{ width: min(88vw, 480px); height: auto; background: #fff;
+         padding: 16px; border-radius: 12px; }}
+  p {{ line-height: 1.5; color: #bbb; max-width: 34rem; margin: 12px auto; }}
+  .status {{ color: #7ddc8b; font-weight: 600; }}
+</style></head>
+<body>
+<h1>Tautkan WhatsApp ke {BOT_NAME}</h1>
+<p>Di HP: WhatsApp &rarr; <b>Perangkat Tertaut</b> &rarr;
+   <b>Tautkan perangkat</b>, lalu scan QR ini.</p>
+<img id="qr" src="{image_url}" alt="QR WhatsApp">
+<p class="status" id="status">Menyiapkan QR…</p>
+<p>QR berganti tiap beberapa detik dan halaman ini memperbaruinya otomatis —
+   cukup scan yang tampil sekarang.</p>
+<script>
+  const img = document.getElementById('qr');
+  const status = document.getElementById('status');
+  img.onload = () => {{ status.textContent = 'QR siap — scan sekarang.'; }};
+  img.onerror = () => {{ status.textContent = 'QR belum tersedia, menunggu…'; }};
+  setInterval(() => {{ img.src = '{image_url}{separator}_=' + Date.now(); }}, 8000);
+  setInterval(() => {{
+    fetch('/health').then(r => r.json()).then(d => {{
+      if (d.connected) {{ status.textContent = 'Berhasil terhubung! Halaman ini boleh ditutup.'; }}
+    }}).catch(() => {{}});
+  }}, 5000);
+</script>
+</body></html>"""
 
 
 # --------------------------------------------------------------------------
@@ -767,6 +816,14 @@ class BotHTTPHandler(BaseHTTPRequestHandler):
         """Status koneksi sebenarnya diambil dari objek client Neonize."""
         client = _current_client
         return bool(client and client.connected)
+
+    def _token_suffix(self) -> str:
+        """Query token yang sedang dipakai, untuk dipasang di URL gambar QR."""
+        import urllib.parse
+
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        token = urllib.parse.parse_qs(query).get("token", [""])[0]
+        return f"?token={urllib.parse.quote(token)}" if token else ""
 
     def _qr_allowed(self) -> bool:
         """Halaman /qr hanya boleh diakses jika sudah login atau token cocok."""
@@ -796,17 +853,28 @@ class BotHTTPHandler(BaseHTTPRequestHandler):
                 }
             )
 
-        elif path == "/qr":
+        elif path in ("/qr", "/qr.png"):
             if not self._qr_allowed():
                 self._json(
                     {"error": "forbidden", "hint": "Bot sudah login, atau butuh ?token=..."},
                     status=403,
                 )
                 return
-            if _latest_qr_png:
+            if path == "/qr":
+                # Halaman HTML: QR WhatsApp cepat kedaluwarsa, jadi gambar
+                # diperbarui otomatis tanpa perlu memuat ulang halaman.
+                body = _qr_page_html(self._token_suffix()).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            elif _latest_qr_png:
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
                 self.send_header("Content-Length", str(len(_latest_qr_png)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(_latest_qr_png)
             else:
@@ -856,7 +924,13 @@ class BotHTTPHandler(BaseHTTPRequestHandler):
                 )
             except Exception as e:
                 logger.exception("Gagal generate Pairing Code: %s", e)
-                self._json({"error": f"gagal generate pairing code: {e}"}, status=500)
+                self._json(
+                    {
+                        "error": "Pairing Code belum bisa dibuat — sesi login WhatsApp tidak aktif.",
+                        "hint": "Muat ulang halaman ini beberapa detik lagi; bot otomatis menyambung ulang dan membuat QR baru.",
+                    },
+                    status=503,
+                )
         else:
             self._json({"error": "not found"}, status=404)
 
@@ -891,6 +965,43 @@ def reminder_loop():
             logger.warning("Loop pengingat error: %s", e)
 
 
+def _should_restart_connection(now, last_qr_at, started_at, connected):
+    """True jika sesi login mati: tidak terhubung dan QR tidak lagi berganti."""
+    if connected:
+        return False
+    if now - started_at < LOGIN_WINDOW_TIMEOUT:
+        return False
+    return now - last_qr_at > LOGIN_WINDOW_TIMEOUT
+
+
+def _restart_process():
+    """Ganti proses saat ini dengan proses baru agar QR login dibuat ulang."""
+    logger.warning(
+        "Sesi login WhatsApp berakhir tanpa scan — memulai ulang bot agar QR baru tersedia."
+    )
+    try:
+        # Jalankan ulang file ini sendiri, apa pun cara proses pertama dimulai.
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
+    except Exception:
+        logger.exception("Gagal memulai ulang proses")
+        os._exit(1)
+
+
+def connection_watchdog():
+    """Pantau koneksi; segarkan sesi login yang kedaluwarsa tanpa redeploy."""
+    global _LAST_QR_AT
+    while True:
+        time.sleep(10)
+        now = time.monotonic()
+        client = _current_client
+        if client is not None and client.connected:
+            _LAST_QR_AT = now
+            continue
+        if _should_restart_connection(now, _LAST_QR_AT, _STARTED_AT, False):
+            _restart_process()
+            return
+
+
 def keep_alive_loop():
     """Ping /health sendiri tiap beberapa menit agar service Render tidak tidur.
 
@@ -915,8 +1026,9 @@ def keep_alive_loop():
 # --------------------------------------------------------------------------
 
 def main():
-    global _current_client
+    global _current_client, _STARTED_AT, _LAST_QR_AT
 
+    _STARTED_AT = _LAST_QR_AT = time.monotonic()
     database.init_db()
     logger.info("%s (WhatsApp) sedang memulai...", BOT_NAME)
 
@@ -929,6 +1041,7 @@ def main():
 
     # Pengingat belajar harian (jam dikonfigurasi lewat env REMINDER_HOUR).
     threading.Thread(target=reminder_loop, daemon=True).start()
+    threading.Thread(target=connection_watchdog, daemon=True).start()
     logger.info("Pengingat belajar harian aktif (jam %s).", reminders.REMINDER_HOUR)
 
     # Sesi tersimpan otomatis di SESSION_DB — restart tidak perlu scan ulang

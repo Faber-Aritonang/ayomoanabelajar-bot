@@ -1,6 +1,7 @@
 """Tes offline pilihan suara dan pelafalan matematika Telegram."""
 
 import asyncio
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,25 @@ from sqlalchemy.orm import sessionmaker
 import database
 import telegram_bot
 import tts
+
+
+class LoggingTests(unittest.TestCase):
+    def test_token_redacted_in_message_and_exception(self):
+        token = "123456:example-test-token"
+        formatter = telegram_bot.TelegramTokenFormatter("%(levelname)s %(message)s")
+        with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": token}):
+            try:
+                raise ValueError(f"request for {token} failed")
+            except ValueError:
+                import sys
+                record = logging.LogRecord("httpx", logging.ERROR, __file__, 1,
+                                           "request to %s", (f"https://api.telegram.org/bot{token}/getMe",),
+                                           sys.exc_info())
+            result = formatter.format(record)
+        self.assertNotIn(token, result)
+        self.assertEqual(result.count("[TOKEN-REDACTED]"), 2)
+        self.assertLess(logging.getLogger("httpx").getEffectiveLevel(), logging.CRITICAL)
+        self.assertGreaterEqual(logging.getLogger("httpx").getEffectiveLevel(), logging.WARNING)
 
 
 class VoiceTests(unittest.IsolatedAsyncioTestCase):

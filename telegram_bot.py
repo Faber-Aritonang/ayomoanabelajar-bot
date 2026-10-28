@@ -39,10 +39,22 @@ from subjects import get_subject, list_subjects
 
 load_dotenv()
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+class TelegramTokenFormatter(logging.Formatter):
+    """Sembunyikan token bot, termasuk dalam pesan exception yang dilog."""
+
+    def format(self, record):
+        message = super().format(record)
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        return message.replace(token, "[TOKEN-REDACTED]") if token else message
+
+
+logging.basicConfig(level=logging.INFO)
+for handler in logging.getLogger().handlers:
+    handler.setFormatter(TelegramTokenFormatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    ))
+# httpx mencatat URL Telegram lengkap pada level INFO.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 BOT_NAME = "Ayo, Moana Belajar!"

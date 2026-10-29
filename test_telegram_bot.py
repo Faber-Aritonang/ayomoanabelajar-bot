@@ -236,6 +236,46 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("KUNCI", soal)
         self.assertEqual(database.get_quiz_summary(USER_ID), [])
 
+    async def test_kuis_menampilkan_penjelasan_setelah_jawaban_benar(self):
+        raw = (
+            "Soal: 2 + 2?\nA. 3\nB. 4\n"
+            "PENJELASAN: Karena 2 + 2 = 4.\nKUNCI: B"
+        )
+        self.context.user_data["subject"] = "matematika"
+        with patch.object(telegram_bot.quiz, "get_ai_reply", return_value=raw):
+            await telegram_bot.kuis_command(self.update, self.context)
+            soal = self.message.reply_text.await_args.args[0]
+            self.assertIn("B. 4", soal)
+            self.assertNotIn("PENJELASAN", soal)
+            self.assertNotIn("KUNCI", soal)
+
+            await telegram_bot.process_text(self.update, self.context, "B")
+
+        feedback = self.message.reply_markdown.await_args_list[0].args[0]
+        self.assertIn("BENAR", feedback)
+        self.assertIn("Penjelasan: Karena 2 + 2 = 4.", feedback)
+
+    async def test_jawaban_kuis_salah_menampilkan_penjelasan(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={
+                "id": "soal-1",
+                "subject": "matematika",
+                "question": "Soal terakhir",
+                "key": "C",
+                "score": 20,
+                "total": 4,
+                "explanation": "Karena 3 + 4 = 7, bukan 8.",
+            },
+        )
+        await telegram_bot.process_text(self.update, self.context, "A")
+
+        feedback = self.message.reply_markdown.await_args.args[0]
+        self.assertIn("Belum tepat", feedback)
+        self.assertIn("Jawaban yang benar adalah *C*", feedback)
+        self.assertIn("Penjelasan: Karena 3 + 4 = 7, bukan 8.", feedback)
+        self.assertIn("Kuis selesai", feedback)
+
     async def test_jawaban_kuis_salah_tidak_menambah_poin_dan_menyimpan_skor(self):
         self.context.user_data.update(
             subject="matematika",

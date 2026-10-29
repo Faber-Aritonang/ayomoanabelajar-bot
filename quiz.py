@@ -5,8 +5,9 @@ Logika **Kuis Adaptif** bersama untuk bot Telegram & WhatsApp.
 
 Alur kerja:
 1. ``start_quiz`` menyiapkan soal pilihan ganda (A–D) lewat AI. AI diminta
-   menulis kunci jawaban di baris "KUNCI: X"; baris itu di-parse lalu dihapus
-   dari teks yang ditampilkan ke anak (kunci tetap rahasia).
+   menulis kunci jawaban di baris "KUNCI: X" dan penjelasan singkat di baris
+   "PENJELASAN: ..."; kedua baris di-parse lalu dihapus dari teks yang
+   ditampilkan ke anak (kunci dan penjelasan tetap rahasia sampai dijawab).
 2. Saat anak menjawab, ``answer_quiz`` mengevaluasi jawaban secara rule-based
    (mencari huruf A–D pada jawaban anak; jawaban yang menyebut lebih dari satu
    pilihan ditolak). **Benar = +10 poin, salah = +0.**
@@ -31,20 +32,29 @@ _KUNCI_RE = re.compile(r"(?i)^(?:kunci|kunci jawaban|jawaban(?: benar)?)\s*:?\s*
 # Fallback: kunci yang ditulis AI tidak di awal baris / format lain, mis.
 # "Kunci jawabannya adalah B" atau "kunci: B" di tengah teks.
 _KUNCI_ANYWHERE_RE = re.compile(r"(?i)kunci(?:\s*jawaban)?(?:nya)?\s*(?:adalah|yaitu|:\s*|\s*-\s*)\s*([a-d])\b")
+# Baris penjelasan dari AI, mis. "PENJELASAN: Karena 2 + 2 = 4."
+_PENJELASAN_RE = re.compile(r"(?i)^\s*\**\s*penjelasan\s*\**\s*:?\s*\**\s*(.+?)\s*\**\s*$")
 # Semua huruf jawaban yang berdiri sendiri, mis. "B", "b.", "jawaban: C".
 # Dipakai untuk mendeteksi jawaban yang menyebut lebih dari satu pilihan.
 _ANSWER_LETTER_RE = re.compile(r"(?i)\b([a-d])\b")
 
 
 def _parse_question(raw: str):
-    """Pisahkan teks soal dari baris kunci jawaban.
+    """Pisahkan teks soal dari baris kunci dan penjelasan jawaban.
 
-    Return: (teks_soal, huruf_kunci) — kunci None kalau AI tidak menulis KUNCI.
+    Return: (teks_soal, huruf_kunci, penjelasan) — kunci None kalau AI tidak
+    menulis KUNCI; penjelasan string kosong kalau tidak tersedia.
     """
     key = None
+    explanation = ""
     kept = []
     for line in (raw or "").splitlines():
-        m = _KUNCI_RE.match(line.strip())
+        stripped = line.strip()
+        exp = _PENJELASAN_RE.match(stripped)
+        if exp:
+            explanation = exp.group(1).strip()
+            continue
+        m = _KUNCI_RE.match(stripped)
         if m:
             key = m.group(1).upper()
             continue
@@ -56,7 +66,7 @@ def _parse_question(raw: str):
                 key = fallback.group(1).upper()
             continue
         kept.append(line)
-    return "\n".join(kept).strip(), key
+    return "\n".join(kept).strip(), key, explanation
 
 
 def _ask_question(subject_key: str, subject: dict, history: list) -> str:
@@ -71,9 +81,12 @@ def _ask_question(subject_key: str, subject: dict, history: list) -> str:
         "berikan soal yang 1 tingkat lebih sulit (Level Up).\n\n"
         "Format jawaban:\n"
         "- Tulis soal dan pilihan A sampai D.\n"
+        "- Tepat sebelum baris KUNCI, tulis: PENJELASAN: <satu kalimat pendek, "
+        "bahasa sederhana untuk anak, menjelaskan mengapa jawabannya benar>.\n"
         "- Di baris PALING AKHIR, tulis persis: KUNCI: X  (ganti X dengan huruf "
         "jawaban yang benar: A, B, C, atau D).\n"
-        "- JANGAN sebut kunci jawaban di bagian soal maupun pilihan jawaban."
+        "- JANGAN sebut kunci jawaban atau penjelasan di bagian soal maupun "
+        "pilihan jawaban."
     )
     return get_ai_reply(subject_key, subject["system_prompt"], history, prompt)
 
@@ -98,11 +111,12 @@ def start_quiz(state: dict, subject_key: str, subject: dict, history: list, retr
 
     for _ in range(max(1, retries)):
         raw = _ask_question(subject_key, subject, history)
-        question, key = _parse_question(raw)
+        question, key, explanation = _parse_question(raw)
         if key:
             quiz = state["quiz"]
             quiz["question"] = question
             quiz["key"] = key
+            quiz["explanation"] = explanation
             return question
 
     # Gagal menyiapkan soal. Kalau ini sesi BARU (belum ada soal dijawab),
@@ -158,6 +172,9 @@ def answer_quiz(state: dict, answer_text: str):
         lines.append(f"🎉 *BENAR!* +{POINTS_CORRECT} poin 🎉")
     else:
         lines.append(f"Belum tepat, Adik. Jawaban yang benar adalah *{quiz['key']}*. Tetap semangat! 💪")
+    explanation = (quiz.get("explanation") or "").strip()
+    if explanation:
+        lines.append(f"Penjelasan: {explanation}")
     lines.append(f"Skor kamu: *{quiz['score']}* poin (soal ke-{quiz['total']} dari {MAX_QUESTIONS}).")
 
     if quiz["total"] >= MAX_QUESTIONS:

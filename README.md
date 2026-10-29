@@ -164,7 +164,7 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 ```bash
 python3 test_whatsapp_bot.py      # 54 skenario, 89 pemeriksaan
 python3 test_telegram_voice.py    # 6 unit test suara & database
-python3 test_telegram_bot.py      # 25 unit test handler & perintah
+python3 test_telegram_bot.py      # 26 unit test handler & perintah
 ```
 
 `test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. `test_telegram_bot.py` menguji handler dan perintah Telegram dengan mock untuk AI/Telegram/Groq. Semua tes memakai database terpisah dan tidak menyentuh data asli; tes Telegram juga tidak memanggil API berbayar.

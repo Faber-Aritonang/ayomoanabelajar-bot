@@ -304,6 +304,40 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(database.get_quiz_summary(USER_ID), [])
 
+    async def test_jawaban_kuis_dengan_lebih_dari_satu_huruf(self):
+        # Aturan saat ini: huruf A-D pertama yang ditemukan dipakai menilai.
+        cases = [
+            ("B atau C", True),
+            ("A atau B", False),
+            ("Jawabannya C, walaupun B juga mungkin", False),
+            ("pilih B, bukan D", True),
+        ]
+        next_question = "Soal lanjutan: 6 + 1?\nA. 6\nB. 7\nKUNCI: B"
+        with patch.object(telegram_bot.quiz, "get_ai_reply", return_value=next_question):
+            for answer, benar in cases:
+                with self.subTest(answer=answer):
+                    self.context.user_data["subject"] = "matematika"
+                    self.context.user_data["quiz"] = {
+                        "subject": "matematika",
+                        "question": "Soal aktif",
+                        "key": "B",
+                        "score": 0,
+                        "total": 0,
+                    }
+                    self.message.reply_markdown.reset_mock()
+                    await telegram_bot.process_text(self.update, self.context, answer)
+
+                    feedback = self.message.reply_markdown.await_args_list[0].args[0]
+                    if benar:
+                        self.assertIn("BENAR", feedback)
+                        self.assertEqual(self.context.user_data["quiz"]["score"], 10)
+                    else:
+                        self.assertIn("Belum tepat", feedback)
+                        self.assertIn("Jawaban yang benar adalah *B*", feedback)
+                        self.assertEqual(self.context.user_data["quiz"]["score"], 0)
+                    self.assertEqual(self.context.user_data["quiz"]["total"], 1)
+                    self.assertEqual(database.get_quiz_summary(USER_ID), [])
+
     # --- Laporan, bintang, rapor ---------------------------------------
 
     async def test_laporan_kosong_dan_berisi_rekap(self):

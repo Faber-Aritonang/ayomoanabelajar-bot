@@ -257,6 +257,7 @@ def main():
     run("kuis jawab benar (+10)", make_event("B", phone=p), expect="BENAR")
     run("kuis jawab salah (+0)", make_event("A", phone=p), expect="Belum tepat")
     run("kuis jawab teks tanpa huruf", make_event("lima belas", phone=p), expect="belum paham jawabanmu")
+    run("kuis jawab dua huruf ditolak", make_event("A atau B", phone=p), expect="lebih dari satu pilihan jawaban")
     run("kuis jawab benar lagi", make_event("jawabannya B", phone=p), expect="BENAR")
     run("kuis jawab benar (soal ke-4)", make_event("B", phone=p), expect="BENAR")
     run("kuis selesai (soal ke-5)", make_event("A", phone=p), expect="Kuis selesai")

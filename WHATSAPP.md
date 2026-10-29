@@ -24,7 +24,7 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 | `1` … `6` | Pilih pelajaran (Matematika, Bahasa Indonesia, dll.) |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
 | 🎤 *(voice note)* | Tanya dengan suara — transkripsi otomatis (Groq Whisper) |
-| `kuis` atau `soal` | Kuis adaptif pelajaran aktif — 5 soal, **benar +10 poin / salah 0**, skor tersimpan |
+| `kuis` atau `soal` | Kuis adaptif pelajaran aktif — 5 soal, **benar +10 poin / salah 0**, skor tersimpan. Jawab dengan satu huruf A–D; jawaban yang menyebut lebih dari satu pilihan ditolak. |
 | `bintang` | Lihat koleksi bintang keaktifan ⭐ |
 | `streak` atau `semangat` | Lihat streak belajar harian 🔥 |
 | `tambah <nomor>` / `hapus <nomor>` / `daftar` | *(Admin)* Kelola whitelist akses bot |

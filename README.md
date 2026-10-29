@@ -10,7 +10,7 @@ Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih
 ## ✨ Fitur Utama (v1.4.6)
 
 - 🤖 **AI Chat Tutor**: Pendamping belajar dengan prompt khusus per mata pelajaran, dibimbing langkah demi langkah (bukan langsung memberi jawaban PR).
-- 📈 **Kuis Adaptif Berpoin**: 5 soal pilihan ganda per sesi. Tingkat kesulitan menyesuaikan riwayat obrolan; jawaban benar **+10 poin**, salah **0 poin**. Kunci jawaban tidak pernah ditampilkan ke anak, dan skor tersimpan di database.
+- 📈 **Kuis Adaptif Berpoin**: 5 soal pilihan ganda per sesi. Tingkat kesulitan menyesuaikan riwayat obrolan; jawaban benar **+10 poin**, salah **0 poin**. Kunci jawaban tidak pernah ditampilkan ke anak, dan skor tersimpan di database. Di Telegram, jawaban bisa diketik atau diklik lewat tombol **A–D**; jawaban yang menyebut lebih dari satu pilihan ditolak dan anak diminta memilih satu.
 - ⭐ **Gamifikasi Bintang**: `/bintang` (Telegram) atau `bintang` (WhatsApp) menampilkan koleksi bintang — 1 bintang untuk setiap 5 interaksi belajar.
 - 🔥 **Streak Belajar Harian**: Hari belajar berturut-turut dihitung dari riwayat database dan ditampilkan lewat `/streak` / `streak`.
 - 🎤 **Mode Suara (dua arah)**: Voice note ditranskripsi otomatis dengan **Groq Whisper** (Bahasa Indonesia, maksimal 2 menit), lalu dijawab seperti pesan teks. Balasan percakapan juga dikirim sebagai voice note.
@@ -34,7 +34,7 @@ Matematika, Bahasa Indonesia, Bahasa Inggris, IPAS, Pendidikan Pancasila, dan Pe
 |---|---|
 | `/start` | Mulai dari awal dan pilih pelajaran lewat tombol |
 | `/menu` | Dasbor navigasi dan ganti pelajaran |
-| `/kuis` | Mulai kuis adaptif pelajaran aktif |
+| `/kuis` | Mulai kuis adaptif pelajaran aktif — jawab lewat tombol A–D atau ketik hurufnya |
 | `/bintang` | Lihat koleksi bintang ⭐ |
 | `/streak` | Lihat streak belajar harian 🔥 |
 | `/laporan` | Rekap keaktifan dan skor kuis (orang tua) |
@@ -55,7 +55,7 @@ WhatsApp tidak punya tombol inline, jadi semua perintah diketik.
 | `1` … `6` | Pilih pelajaran |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
 | 🎤 *(voice note)* | Tanya dengan suara — ditranskripsi otomatis (Groq Whisper) |
-| `kuis` / `soal` / `latihan` | Kuis adaptif pelajaran aktif |
+| `kuis` / `soal` / `latihan` | Kuis adaptif pelajaran aktif — jawab dengan satu huruf A–D |
 | `bintang` | Lihat koleksi bintang ⭐ |
 | `streak` / `semangat` | Lihat streak belajar harian 🔥 |
 | `laporan` | Rekap keaktifan belajar (orang tua) |
@@ -164,9 +164,9 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 ## 🧪 Tes Offline
 
 ```bash
-python3 test_whatsapp_bot.py      # 54 skenario, 89 pemeriksaan
+python3 test_whatsapp_bot.py      # 55 skenario, 90 pemeriksaan
 python3 test_telegram_voice.py    # 6 unit test suara & database
-python3 test_telegram_bot.py      # 26 unit test handler & perintah
+python3 test_telegram_bot.py      # 29 unit test handler & perintah
 ```
 
 `test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. `test_telegram_bot.py` menguji handler dan perintah Telegram dengan mock untuk AI/Telegram/Groq. Semua tes memakai database terpisah dan tidak menyentuh data asli; tes Telegram juga tidak memanggil API berbayar.
@@ -180,7 +180,7 @@ Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semu
 ### Fokus utama
 
 1. **Privasi dan keamanan data anak.** Riwayat percakapan tersimpan tanpa batas dan belum ada perintah hapus data untuk orang tua.
-2. **Integritas penilaian belajar.** Kuis masih dapat dinilai dari huruf pertama dan gamifikasi dapat dimanipulasi dengan interaksi berulang.
+2. **Integritas penilaian belajar.** Kuis belum memberi umpan balik konseptual, dan gamifikasi masih dapat dimanipulasi dengan interaksi berulang.
 3. **Keandalan dan biaya operasional.** WhatsApp memakai library tidak resmi, sesi dapat hilang di filesystem sementara, dan AI bergantung pada satu penyedia.
 
 ### Prioritas cepat (1–2 minggu)
@@ -190,11 +190,10 @@ Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semu
    - Tetapkan retensi otomatis, misalnya riwayat disimpan 90 hari lalu dihapus atau dianonimkan.
    - Minta persetujuan orang tua saat pendaftaran dan catat admin yang menambah/menghapus pengguna.
    - Pastikan penghapusan mencakup seluruh tabel terkait (`conversations`, `quiz_scores`, `telegram_voice_preferences`, dan `whitelist`).
-2. **Validasi jawaban kuis**
-   - Saat ini `quiz.py` mengambil huruf A–D pertama yang ditemukan; jawaban “A atau B” dinilai A tanpa peringatan.
-   - Tolak jawaban yang menyebut lebih dari satu huruf dan minta anak memilih satu.
-   - Tambahkan tombol jawaban A–D di Telegram agar anak tidak perlu mengetik.
-   - Beri penjelasan singkat mengapa jawaban benar atau salah, bukan hanya skor.
+2. **Penyempurnaan kuis**
+   - Sudah tersedia: tombol jawaban A–D di Telegram dan penolakan jawaban yang menyebut lebih dari satu huruf.
+   - Berikutnya: beri penjelasan singkat mengapa jawaban benar atau salah, bukan hanya skor.
+   - Pertimbangkan penilaian bertahap untuk jawaban yang menyertakan alasan, bukan hanya huruf.
 3. **Batasi penyalahgunaan poin dan bintang**
    - Bintang dihitung dari `jumlah interaksi // 5`, sehingga bisa dikumpulkan dengan mengirim pesan pendek berulang.
    - Beri bobot pada jawaban kuis benar, hari belajar unik, dan variasi mata pelajaran.
@@ -251,7 +250,7 @@ Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semu
 
 | Tahap | Fokus |
 |---|---|
-| 0–2 minggu | Privasi dan hapus data, validasi jawaban kuis, rate limit, perbaikan `/help`, alert error |
+| 0–2 minggu | Privasi dan hapus data, rate limit, perbaikan `/help`, alert error, penjelasan jawaban kuis |
 | 2–6 minggu | Mastery per topik + bank soal, laporan orang tua, Alembic + indeks, pilihan suara WhatsApp |
 | 1–3 bulan | WhatsApp Cloud API, sesi persisten, mode guru/sekolah, alur review konten |
 

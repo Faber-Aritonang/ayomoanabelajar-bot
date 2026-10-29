@@ -78,6 +78,7 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
             data=data,
             answer=AsyncMock(),
             edit_message_text=AsyncMock(),
+            edit_message_reply_markup=AsyncMock(),
             message=self.message,
         )
         self.update.callback_query = query
@@ -155,12 +156,32 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Pilih dulu", self.message.reply_text.await_args.args[0])
 
         self.context.user_data["subject"] = "matematika"
-        with patch.object(telegram_bot.quiz, "start_quiz", return_value="Berapa 2 + 2?") as start:
+
+        def start_quiz_side_effect(state, subject_key, subject, history):
+            state["quiz"] = {
+                "id": "soal-1",
+                "subject": subject_key,
+                "key": "B",
+                "score": 0,
+                "total": 0,
+            }
+            return "Berapa 2 + 2?"
+
+        with patch.object(
+            telegram_bot.quiz, "start_quiz", side_effect=start_quiz_side_effect
+        ) as start:
             await telegram_bot.kuis_command(self.update, self.context)
         start.assert_called_once()
         teks = self.message.reply_text.await_args.args[0]
         self.assertIn("Kuis Adaptif (Matematika)", teks)
         self.assertIn("Berapa 2 + 2?", teks)
+        markup = self.message.reply_text.await_args.kwargs["reply_markup"]
+        tombol = [button for row in markup.inline_keyboard for button in row]
+        self.assertEqual([button.text for button in tombol], ["A", "B", "C", "D"])
+        self.assertEqual(
+            [button.callback_data for button in tombol],
+            [f"quiz:soal-1:{letter}" for letter in ("A", "B", "C", "D")],
+        )
         riwayat = database.get_recent_messages(USER_ID, "matematika", limit=1)
         self.assertEqual(riwayat[0]["content"], "Berapa 2 + 2?")
 
@@ -304,39 +325,107 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(database.get_quiz_summary(USER_ID), [])
 
-    async def test_jawaban_kuis_dengan_lebih_dari_satu_huruf(self):
-        # Aturan saat ini: huruf A-D pertama yang ditemukan dipakai menilai.
+    async def test_jawaban_kuis_dengan_lebih_dari_satu_huruf_ditolak(self):
         cases = [
-            ("B atau C", True),
-            ("A atau B", False),
-            ("Jawabannya C, walaupun B juga mungkin", False),
-            ("pilih B, bukan D", True),
+            "B atau C",
+            "A atau B",
+            "Jawabannya C, walaupun B juga mungkin",
+            "pilih B, bukan D",
+            "A dan B",
         ]
-        next_question = "Soal lanjutan: 6 + 1?\nA. 6\nB. 7\nKUNCI: B"
-        with patch.object(telegram_bot.quiz, "get_ai_reply", return_value=next_question):
-            for answer, benar in cases:
-                with self.subTest(answer=answer):
-                    self.context.user_data["subject"] = "matematika"
-                    self.context.user_data["quiz"] = {
-                        "subject": "matematika",
-                        "question": "Soal aktif",
-                        "key": "B",
-                        "score": 0,
-                        "total": 0,
-                    }
-                    self.message.reply_markdown.reset_mock()
-                    await telegram_bot.process_text(self.update, self.context, answer)
+        for answer in cases:
+            with self.subTest(answer=answer):
+                self.context.user_data["subject"] = "matematika"
+                self.context.user_data["quiz"] = {
+                    "id": "soal-1",
+                    "subject": "matematika",
+                    "question": "Soal aktif",
+                    "key": "B",
+                    "score": 10,
+                    "total": 1,
+                }
+                self.message.reply_markdown.reset_mock()
+                await telegram_bot.process_text(self.update, self.context, answer)
 
-                    feedback = self.message.reply_markdown.await_args_list[0].args[0]
-                    if benar:
-                        self.assertIn("BENAR", feedback)
-                        self.assertEqual(self.context.user_data["quiz"]["score"], 10)
-                    else:
-                        self.assertIn("Belum tepat", feedback)
-                        self.assertIn("Jawaban yang benar adalah *B*", feedback)
-                        self.assertEqual(self.context.user_data["quiz"]["score"], 0)
-                    self.assertEqual(self.context.user_data["quiz"]["total"], 1)
-                    self.assertEqual(database.get_quiz_summary(USER_ID), [])
+                feedback = self.message.reply_markdown.await_args.args[0]
+                self.assertIn("lebih dari satu pilihan jawaban", feedback)
+                self.assertIn("Pilih satu huruf saja", feedback)
+                self.assertNotIn("BENAR", feedback)
+                self.assertNotIn("Belum tepat", feedback)
+                self.assertNotIn("+10", feedback)
+                self.assertEqual(self.context.user_data["quiz"]["score"], 10)
+                self.assertEqual(self.context.user_data["quiz"]["total"], 1)
+                self.assertEqual(self.context.user_data["quiz"]["key"], "B")
+                self.assertEqual(self.message.reply_markdown.await_count, 1)
+                self.assertEqual(database.get_quiz_summary(USER_ID), [])
+
+    async def test_tombol_jawaban_kuis_memproses_jawaban(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={
+                "id": "soal-1",
+                "subject": "matematika",
+                "question": "Soal aktif",
+                "key": "B",
+                "score": 0,
+                "total": 0,
+            },
+        )
+        query = self.make_callback("quiz:soal-1:B")
+        next_question = "Soal berikutnya: 7 + 1?\nA. 7\nB. 8\nKUNCI: B"
+        with patch.object(telegram_bot.quiz, "get_ai_reply", return_value=next_question):
+            await telegram_bot.quiz_answer_chosen(self.update, self.context)
+
+        query.answer.assert_awaited_once_with()
+        query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
+        feedback = self.message.reply_markdown.await_args_list[0].args[0]
+        self.assertIn("BENAR", feedback)
+        self.assertEqual(self.context.user_data["quiz"]["score"], 10)
+
+        soal = self.message.reply_markdown.await_args_list[1]
+        self.assertIn("Kuis Adaptif (Matematika)", soal.args[0])
+        markup = soal.kwargs["reply_markup"]
+        tombol = [button for row in markup.inline_keyboard for button in row]
+        soal_id = self.context.user_data["quiz"]["id"]
+        self.assertEqual(
+            [button.callback_data for button in tombol],
+            [f"quiz:{soal_id}:{letter}" for letter in ("A", "B", "C", "D")],
+        )
+
+    async def test_tombol_kuis_dari_soal_lama_diabaikan(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={
+                "id": "soal-baru",
+                "subject": "matematika",
+                "key": "B",
+                "score": 0,
+                "total": 0,
+            },
+        )
+        query = self.make_callback("quiz:soal-lama:A")
+        await telegram_bot.quiz_answer_chosen(self.update, self.context)
+
+        query.answer.assert_awaited_with(
+            "Soal ini sudah tidak aktif. Ketik /kuis untuk soal baru ya!",
+            show_alert=True,
+        )
+        query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
+        self.message.reply_markdown.assert_not_awaited()
+        self.assertEqual(self.context.user_data["quiz"]["id"], "soal-baru")
+
+    async def test_tombol_kuis_menolak_pengguna_non_whitelist(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={"id": "soal-1", "subject": "matematika", "key": "B"},
+        )
+        query = self.make_callback("quiz:soal-1:A")
+        with patch.object(telegram_bot.whitelist, "is_allowed", return_value=False):
+            await telegram_bot.quiz_answer_chosen(self.update, self.context)
+
+        query.answer.assert_awaited_with(telegram_bot.whitelist.REJECT_TEXT, show_alert=True)
+        query.edit_message_reply_markup.assert_not_awaited()
+        self.message.reply_markdown.assert_not_awaited()
 
     # --- Laporan, bintang, rapor ---------------------------------------
 

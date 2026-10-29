@@ -8,7 +8,8 @@ Alur kerja:
    menulis kunci jawaban di baris "KUNCI: X"; baris itu di-parse lalu dihapus
    dari teks yang ditampilkan ke anak (kunci tetap rahasia).
 2. Saat anak menjawab, ``answer_quiz`` mengevaluasi jawaban secara rule-based
-   (mencari huruf A–D pada jawaban anak). **Benar = +10 poin, salah = +0.**
+   (mencari huruf A–D pada jawaban anak; jawaban yang menyebut lebih dari satu
+   pilihan ditolak). **Benar = +10 poin, salah = +0.**
 3. Satu sesi maksimal 5 soal. Setelah selesai, skor dikembalikan agar bot
    menyimpannya ke tabel ``quiz_scores`` lewat ``database.save_quiz_score``.
 
@@ -18,6 +19,7 @@ bisa dipakai oleh `context.user_data` (Telegram) maupun `_user_states`
 """
 
 import re
+import uuid
 
 from llm import get_ai_reply
 
@@ -29,8 +31,9 @@ _KUNCI_RE = re.compile(r"(?i)^(?:kunci|kunci jawaban|jawaban(?: benar)?)\s*:?\s*
 # Fallback: kunci yang ditulis AI tidak di awal baris / format lain, mis.
 # "Kunci jawabannya adalah B" atau "kunci: B" di tengah teks.
 _KUNCI_ANYWHERE_RE = re.compile(r"(?i)kunci(?:\s*jawaban)?(?:nya)?\s*(?:adalah|yaitu|:\s*|\s*-\s*)\s*([a-d])\b")
-# Huruf jawaban pada jawaban anak, mis. "B", "b.", "jawabannya C".
-_ANSWER_RE = re.compile(r"(?i)(?:jawaban(?:ku|nya)?\s*(?:adalah|yaitu)?\s*[:.\-]?\s*)?\b([a-d])\b")
+# Semua huruf jawaban yang berdiri sendiri, mis. "B", "b.", "jawaban: C".
+# Dipakai untuk mendeteksi jawaban yang menyebut lebih dari satu pilihan.
+_ANSWER_LETTER_RE = re.compile(r"(?i)\b([a-d])\b")
 
 
 def _parse_question(raw: str):
@@ -85,6 +88,9 @@ def start_quiz(state: dict, subject_key: str, subject: dict, history: list, retr
     """
     existing = state.get("quiz") or {}
     state["quiz"] = {
+        # ID unik per soal, dipakai tombol Telegram agar jawaban dari soal
+        # lama tidak ikut menilai soal baru.
+        "id": uuid.uuid4().hex,
         "subject": subject_key,
         "score": existing.get("score", 0),
         "total": existing.get("total", 0),
@@ -125,16 +131,23 @@ def answer_quiz(state: dict, answer_text: str):
     if not quiz:
         return None, None, None
 
-    m = _ANSWER_RE.search(answer_text or "")
-    if not m:
+    letters = {m.group(1).upper() for m in _ANSWER_LETTER_RE.finditer(answer_text or "")}
+    if not letters:
         return (
             "Aku belum paham jawabanmu, Adik. Ketik hurufnya saja ya, "
             "misalnya *B* atau *C*. 😊",
             None,
             None,
         )
+    if len(letters) > 1:
+        return (
+            "Aku melihat lebih dari satu pilihan jawaban, Adik. "
+            "Pilih satu huruf saja ya, misalnya *B*. 😊",
+            None,
+            None,
+        )
 
-    letter = m.group(1).upper()
+    letter = letters.pop()
     correct = letter == quiz["key"]
     if correct:
         quiz["score"] += POINTS_CORRECT

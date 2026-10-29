@@ -90,6 +90,14 @@ def build_voice_keyboard() -> InlineKeyboardMarkup:
     ]])
 
 
+def build_quiz_keyboard(question_id: str) -> InlineKeyboardMarkup:
+    """Tombol jawaban A-D; ID soal mencegah jawaban dari soal lama."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(letter, callback_data=f"quiz:{question_id}:{letter}")
+        for letter in ("A", "B", "C", "D")
+    ]])
+
+
 def build_subject_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for key, data in list_subjects():
@@ -135,6 +143,48 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     database.set_telegram_voice(update.effective_user.id, VOICE_CHOICES[choice])
     await update.message.reply_text(f"Oke, suara balasan dipilih: {choice}. 🎙️")
+
+
+async def quiz_answer_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Jawab kuis lewat tombol A-D di Telegram."""
+    query = update.callback_query
+    user = query.from_user
+    if not whitelist.is_allowed(str(user.id), platform="telegram"):
+        await query.answer(whitelist.REJECT_TEXT, show_alert=True)
+        return
+
+    parts = query.data.split(":")
+    if len(parts) != 3 or parts[2].upper() not in ("A", "B", "C", "D"):
+        await query.answer("Tombol kuis tidak dikenal.", show_alert=True)
+        return
+
+    _, question_id, letter = parts
+    quiz_state = context.user_data.get("quiz")
+    if not quiz_state or quiz_state.get("id") != question_id:
+        await query.answer(
+            "Soal ini sudah tidak aktif. Ketik /kuis untuk soal baru ya!",
+            show_alert=True,
+        )
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            logger.debug("Gagal menghapus tombol kuis lama", exc_info=True)
+        return
+
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        logger.debug("Gagal menghapus tombol kuis lama", exc_info=True)
+
+    subject_key = quiz_state["subject"]
+    subject = get_subject(subject_key)
+    if not subject:
+        await query.message.reply_text(
+            "Pelajaran untuk kuis ini tidak ditemukan. Ketik /kuis lagi ya."
+        )
+        return
+    await handle_quiz_answer(update, context, letter.upper(), subject_key, subject)
 
 
 async def voice_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -463,7 +513,7 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     database.save_message(user.id, username, subject_key, "user", answer_text)
     database.save_message(user.id, username, subject_key, "assistant", feedback)
-    await update.message.reply_markdown(feedback)
+    await update.effective_message.reply_markdown(feedback)
 
     if need_next == "NEXT":
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -471,9 +521,12 @@ async def handle_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE,
         question_text = quiz.start_quiz(context.user_data, subject_key, subject, history)
         if question_text:
             database.save_message(user.id, username, subject_key, "assistant", question_text)
-            await update.message.reply_markdown(f"📝 *Kuis Adaptif ({subject['name']})*\n\n{question_text}")
+            await update.effective_message.reply_markdown(
+                f"📝 *Kuis Adaptif ({subject['name']})*\n\n{question_text}",
+                reply_markup=build_quiz_keyboard(context.user_data["quiz"]["id"]),
+            )
         else:
-            await update.message.reply_text(
+            await update.effective_message.reply_text(
                 "Maaf, Kak Moana sedang kesulitan menyiapkan soal berikutnya. Coba lagi ya!"
             )
 
@@ -542,7 +595,8 @@ def main():
     app.add_handler(CommandHandler(["hapus", "remove", "delete"], admin_whitelist_command, filters=WL_FILTER))
     app.add_handler(CommandHandler(["daftar", "list"], admin_whitelist_command, filters=WL_FILTER))
     # Catatan: CallbackQueryHandler (PTB >= 21) tidak menerima argumen `filters`;
-    # cek whitelist dilakukan di dalam handler subject_chosen.
+    # cek whitelist dilakukan di dalam masing-masing handler callback.
+    app.add_handler(CallbackQueryHandler(quiz_answer_chosen, pattern=r"^quiz:"))
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
     app.add_handler(CallbackQueryHandler(voice_chosen, pattern=r"^voice:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & WL_FILTER, handle_message))
@@ -626,7 +680,10 @@ async def kuis_command(update, context):
     # Simpan soal ke database agar Kak Moana ingat apa yang baru saja ditanyakan
     username = update.effective_user.username or update.effective_user.first_name
     database.save_message(user_id, username, subject_key, "assistant", question_text)
-    await update.message.reply_text(f"📝 *Kuis Adaptif ({subject_name})*\n\n{question_text}")
+    await update.message.reply_text(
+        f"📝 *Kuis Adaptif ({subject_name})*\n\n{question_text}",
+        reply_markup=build_quiz_keyboard(context.user_data["quiz"]["id"]),
+    )
 
 
 async def laporan_command(update, context):

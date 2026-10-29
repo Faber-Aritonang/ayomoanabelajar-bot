@@ -173,6 +173,88 @@ python3 test_telegram_bot.py      # 26 unit test handler & perintah
 
 Workflow GitHub Actions di `.github/workflows/tests.yml` menjalankan ketiga tes ini otomatis pada setiap push.
 
+## Perencanaan Pengembangan Proyek
+
+Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semua item di bawah **belum tersedia** kecuali disebutkan lain. Urutannya disusun berdasarkan risiko dan dampak, bukan target tanggal yang mengikat.
+
+### Fokus utama
+
+1. **Privasi dan keamanan data anak.** Riwayat percakapan tersimpan tanpa batas dan belum ada perintah hapus data untuk orang tua.
+2. **Integritas penilaian belajar.** Kuis masih dapat dinilai dari huruf pertama dan gamifikasi dapat dimanipulasi dengan interaksi berulang.
+3. **Keandalan dan biaya operasional.** WhatsApp memakai library tidak resmi, sesi dapat hilang di filesystem sementara, dan AI bergantung pada satu penyedia.
+
+### Prioritas cepat (1–2 minggu)
+
+1. **Kebijakan privasi dan penghapusan data**
+   - Tambahkan `/privasi` dan `/hapusdata` (dengan konfirmasi) untuk menghapus riwayat chat, skor kuis, preferensi suara, dan data terkait.
+   - Tetapkan retensi otomatis, misalnya riwayat disimpan 90 hari lalu dihapus atau dianonimkan.
+   - Minta persetujuan orang tua saat pendaftaran dan catat admin yang menambah/menghapus pengguna.
+   - Pastikan penghapusan mencakup seluruh tabel terkait (`conversations`, `quiz_scores`, `telegram_voice_preferences`, dan `whitelist`).
+2. **Validasi jawaban kuis**
+   - Saat ini `quiz.py` mengambil huruf A–D pertama yang ditemukan; jawaban “A atau B” dinilai A tanpa peringatan.
+   - Tolak jawaban yang menyebut lebih dari satu huruf dan minta anak memilih satu.
+   - Tambahkan tombol jawaban A–D di Telegram agar anak tidak perlu mengetik.
+   - Beri penjelasan singkat mengapa jawaban benar atau salah, bukan hanya skor.
+3. **Batasi penyalahgunaan poin dan bintang**
+   - Bintang dihitung dari `jumlah interaksi // 5`, sehingga bisa dikumpulkan dengan mengirim pesan pendek berulang.
+   - Beri bobot pada jawaban kuis benar, hari belajar unik, dan variasi mata pelajaran.
+   - Tambahkan batas poin dan bintang harian.
+4. **Rate limit dan pelindung biaya AI**
+   - Batasi jumlah pesan per pengguna per menit dan per hari.
+   - Tambahkan timeout, retry terbatas, dan fallback bila Claude gagal.
+   - Catat perkiraan token dan biaya per pengguna agar lonjakan pemakaian cepat terlihat.
+5. **Konsistensi UX perintah**
+   - `/help` Telegram belum mencantumkan `/kuis`, `/bintang`, `/laporan`, dan `/rapor`; samakan dengan `/menu`.
+   - Daftarkan perintah bot di BotFather agar muncul di menu Telegram.
+   - Tambahkan onboarding untuk orang tua: cara memantau, cara menghapus data, dan batasan bot.
+6. **Observability**
+   - Kirim error penting ke layanan monitoring, bukan hanya log Render.
+   - Catat metrik jumlah pesan, kegagalan AI, kegagalan TTS/STT, pengingat terkirim, dan pengguna aktif harian.
+   - Tambahkan alert bila bot WhatsApp terputus atau error rate naik.
+
+### Jangka menengah (3–6 minggu)
+
+7. **Model penguasaan materi, bukan sekadar kuis adaptif**
+   - Simpan topik tiap soal (misalnya pecahan, perkalian, membaca cerita), tingkat kesulitan, dan hasil per topik.
+   - Hitung mastery per topik, lalu pilih soal berikutnya berdasarkan kelemahan nyata, bukan hanya 6 pesan terakhir.
+   - Tambahkan pengulangan berjarak (*spaced repetition*) dan bank soal terkurasi agar kualitas soal tidak sepenuhnya bergantung pada AI.
+8. **Dasbor orang tua yang lebih bermakna**
+   - Laporan saat ini masih berupa jumlah interaksi dan skor kuis.
+   - Tambahkan akurasi per mata pelajaran, tren mingguan, topik yang perlu diulang, waktu belajar, dan rekomendasi latihan.
+   - Sediakan ekspor PDF/gambar dan dukungan lebih dari satu anak dalam satu akun orang tua.
+9. **Migrasi database yang aman**
+   - Tambahkan Alembic untuk perubahan skema; saat ini `create_all` belum menangani migrasi kolom.
+   - Tambahkan indeks pada `user_id`, `subject`, dan `timestamp` untuk query riwayat yang makin besar.
+   - Siapkan backup dan prosedur restore Neon.
+10. **Persistensi sesi WhatsApp**
+    - Pindahkan `wa_session.db` ke penyimpanan persisten atau database yang didukung, karena filesystem Render free tier tidak permanen.
+    - Buat mekanisme reconnect yang tahan restart.
+    - Untuk jangka panjang, pertimbangkan migrasi ke **WhatsApp Cloud API resmi** agar tidak melanggar ToS dan tidak berisiko nomor diblokir.
+11. **Pilihan suara di WhatsApp**
+    - Tambahkan perintah `suara perempuan` / `suara laki-laki` dan simpan preferensi per nomor, seperti tabel `telegram_voice_preferences`.
+    - Pastikan fallback teks tetap tersedia bila TTS gagal.
+
+### Jangka panjang (2–3 bulan)
+
+12. **Mode guru/sekolah**
+    - Tambahkan akun guru untuk mengelola beberapa siswa, melihat rekap kelas, dan meninjau soal.
+    - Sediakan panel admin untuk whitelist, konten, dan pemakaian; saat ini semuanya lewat chat.
+13. **Kurikulum dan kualitas konten**
+    - Selaraskan bank soal dengan Kurikulum Merdeka dan capaian pembelajaran per kelas.
+    - Buat alur review guru sebelum soal masuk produksi.
+    - Wajibkan rujukan materi saat AI menjawab, dan tambahkan pengaman agar AI tidak mengarang jawaban untuk soal matematika.
+14. **Aksesibilitas dan jangkauan**
+    - Sediakan mode teks lebih besar, dukungan pesan suara untuk anak yang belum lancar membaca, dan bahasa daerah bila diperlukan.
+    - Tambahkan mode hemat data untuk koneksi lambat.
+
+### Urutan pelaksanaan yang disarankan
+
+| Tahap | Fokus |
+|---|---|
+| 0–2 minggu | Privasi dan hapus data, validasi jawaban kuis, rate limit, perbaikan `/help`, alert error |
+| 2–6 minggu | Mastery per topik + bank soal, laporan orang tua, Alembic + indeks, pilihan suara WhatsApp |
+| 1–3 bulan | WhatsApp Cloud API, sesi persisten, mode guru/sekolah, alur review konten |
+
 ## 📝 Changelog
 
 - **[v1.4.6]**

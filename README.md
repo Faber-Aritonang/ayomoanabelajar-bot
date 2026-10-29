@@ -3,6 +3,7 @@
 ![Version](https://img.shields.io/badge/version-v1.4.6-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.14-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Telegram%20%26%20WhatsApp-success.svg)
+![Tests](https://github.com/Faber-Aritonang/ayomoanabelajar-bot/actions/workflows/tests.yml/badge.svg)
 
 Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih mata pelajaran, bertanya lewat teks atau voice note, lalu berlatih dengan kuis adaptif. Tersedia di **Telegram** dan **WhatsApp** — keduanya berbagi materi, prompt guru, dan database riwayat belajar yang sama.
 
@@ -106,6 +107,7 @@ Nonaktif secara default (semua orang bisa memakai bot). Untuk mengaktifkan:
 | `test_telegram_voice.py` | Unit test suara, database, dan log Telegram |
 | `test_telegram_bot.py` | Unit test handler dan perintah Telegram |
 | `CONTRIBUTING.md` | Panduan kontributor dan pola implementasi mode suara |
+| `.github/workflows/tests.yml` | CI: menjalankan semua tes pada setiap push |
 
 ## 🚀 Menjalankan Lokal
 
@@ -168,6 +170,8 @@ python3 test_telegram_bot.py      # 26 unit test handler & perintah
 ```
 
 `test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. `test_telegram_bot.py` menguji handler dan perintah Telegram dengan mock untuk AI/Telegram/Groq. Semua tes memakai database terpisah dan tidak menyentuh data asli; tes Telegram juga tidak memanggil API berbayar.
+
+Workflow GitHub Actions di `.github/workflows/tests.yml` menjalankan ketiga tes ini otomatis pada setiap push.
 
 ## 📝 Changelog
 

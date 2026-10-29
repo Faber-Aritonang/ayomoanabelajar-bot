@@ -240,6 +240,30 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
             [("matematika", 20, 5)],
         )
 
+    async def test_jawaban_kuis_tanpa_huruf_a_sampai_d_tidak_mengubah_skor(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={
+                "subject": "matematika",
+                "key": "B",
+                "score": 10,
+                "total": 1,
+                "question": "Soal aktif",
+            },
+        )
+        for answer in ("2", "E", "belum tahu"):
+            with self.subTest(answer=answer):
+                await telegram_bot.process_text(self.update, self.context, answer)
+                feedback = self.message.reply_markdown.await_args.args[0]
+                self.assertIn("belum paham jawabanmu", feedback)
+                self.assertIn("Ketik hurufnya saja", feedback)
+                self.assertNotIn("poin", feedback)
+                self.assertEqual(self.context.user_data["quiz"]["score"], 10)
+                self.assertEqual(self.context.user_data["quiz"]["total"], 1)
+                self.assertEqual(self.context.user_data["quiz"]["key"], "B")
+                self.assertEqual(database.get_quiz_summary(USER_ID), [])
+        self.assertEqual(self.message.reply_markdown.await_count, 3)
+
     # --- Laporan, bintang, rapor ---------------------------------------
 
     async def test_laporan_kosong_dan_berisi_rekap(self):

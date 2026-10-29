@@ -54,7 +54,7 @@ import stt
 import tts
 import whitelist
 from llm import get_ai_reply
-from subjects import get_subject, list_subjects
+from subjects import get_group, get_subject, list_subjects
 
 load_dotenv()
 
@@ -127,14 +127,33 @@ def _subject_menu_text() -> str:
     lines.append("Ketik *angka* di bawah ini untuk memilih pelajaran:")
     lines.append("")
     for i, (key, data) in enumerate(list_subjects(), start=1):
-        lines.append(f"{i}. {data['emoji']} {data['name']}")
+        if get_group(key):
+            jumlah = len(list_subjects(key))
+            lines.append(f"{i}. {data['emoji']} {data['name']} — {jumlah} sub-menu")
+        else:
+            lines.append(f"{i}. {data['emoji']} {data['name']}")
     lines.append("")
     lines.append("Contoh: ketik *1* untuk Matematika.")
     lines.append("Atau ketik *menu* kapan saja untuk kembali ke sini.")
     return "\n".join(lines)
 
 
-def parse_command(text: str, subject_active: bool = False):
+def _group_menu_text(group_key: str) -> str:
+    """Daftar sub-menu sebuah grup, mis. 8 cabang Ayo Sain Olimpiade."""
+    group = get_group(group_key)
+    if not group:
+        return _subject_menu_text()
+    lines = [f"{group['emoji']} *{group['name']}* {group['emoji']}", "", group["description"], ""]
+    lines.append("Ketik *angka* untuk memilih sub-menu:")
+    lines.append("")
+    for i, (key, data) in enumerate(list_subjects(group_key), start=1):
+        lines.append(f"{i}. {data['emoji']} {data['name']}")
+    lines.append("")
+    lines.append("Ketik *menu* untuk kembali ke daftar pelajaran.")
+    return "\n".join(lines)
+
+
+def parse_command(text: str, subject_active: bool = False, group_key: str | None = None):
     """Ubah teks WhatsApp menjadi (jenis perintah, nilai).
 
     WhatsApp tidak mengenal slash command, jadi kita kenali kata-kata kunci
@@ -164,10 +183,11 @@ def parse_command(text: str, subject_active: bool = False):
     if t in keywords:
         return keywords[t]
 
-    # Angka = pilih pelajaran, tapi hanya saat belum ada pelajaran aktif.
+    # Angka = pilih pelajaran/sub-menu, tapi hanya saat belum ada pelajaran
+    # aktif — supaya jawaban kuis berupa angka tidak ikut mengubah pelajaran.
     if not subject_active and t.isdigit():
         n = int(t)
-        if 1 <= n <= len(list_subjects()):
+        if 1 <= n <= len(list_subjects(group_key)):
             return ("pilih_subject", n)
 
     return ("chat", text)
@@ -196,12 +216,20 @@ def _send(client: NewClient, ev: MessageEv, text: str):
 
 
 def handle_start(client, ev, phone):
-    _state(phone).pop("subject", None)
-    _state(phone).pop("quiz", None)  # keluar dari kuis yang sedang berjalan
+    st = _state(phone)
+    st.pop("subject", None)
+    st.pop("quiz", None)  # keluar dari kuis yang sedang berjalan
+    st.pop("pending_group", None)
     _send(client, ev, _subject_menu_text())
 
 
 def handle_menu(client, ev, phone):
+    # Menu juga berfungsi sebagai "ganti pelajaran": bersihkan pilihan lama
+    # agar angka berikutnya bisa memilih pelajaran/grup lagi.
+    st = _state(phone)
+    st.pop("subject", None)
+    st.pop("quiz", None)
+    st.pop("pending_group", None)
     _send(client, ev, _subject_menu_text())
 
 
@@ -226,6 +254,7 @@ def handle_reset(client, ev, phone):
     st = _state(phone)
     subject_key = st.get("subject")
     if not subject_key:
+        st.pop("pending_group", None)
         _send(client, ev, "Belum ada pelajaran yang dipilih. Ketik *menu* dulu ya!")
         return
     st["reset_marker"] = True
@@ -235,9 +264,24 @@ def handle_reset(client, ev, phone):
 
 
 def handle_pick_subject(client, ev, phone, number):
-    subjects = list_subjects()
-    key, data = subjects[number - 1]
     st = _state(phone)
+    group_key = st.get("pending_group")
+    subjects = list_subjects(group_key)
+    if not (1 <= number <= len(subjects)):
+        _send(client, ev, "Pilihan itu tidak tersedia. Ketik *menu* untuk melihat daftar ya.")
+        return
+
+    key, data = subjects[number - 1]
+    if group_key:
+        st.pop("pending_group", None)
+    elif get_group(key):
+        # Grup seperti Ayo Sain Olimpiade belum menjadi pelajaran; tampilkan
+        # sub-menunya dulu dan tunggu pilihan berikutnya.
+        st["pending_group"] = key
+        st.pop("quiz", None)
+        _send(client, ev, _group_menu_text(key))
+        return
+
     st["subject"] = key
     st["reset_marker"] = True  # mulai konteks segar tiap ganti pelajaran
     st.pop("quiz", None)  # pelajaran baru = kuis baru
@@ -255,6 +299,7 @@ def handle_voice(client, ev, phone):
     st = _state(phone)
     subject_key = st.get("subject")
     if not subject_key:
+        st.pop("pending_group", None)  # keluar dari sub-menu kalau belum belajar
         _send(
             client,
             ev,
@@ -363,6 +408,7 @@ def handle_chat(client, ev, phone, text):
     st = _state(phone)
     subject_key = st.get("subject")
     if not subject_key:
+        st.pop("pending_group", None)  # keluar dari sub-menu kalau belum belajar
         _send(
             client,
             ev,
@@ -695,9 +741,13 @@ def on_message(client: NewClient, ev: MessageEv):
         if handle_whitelist_admin(client, ev, phone, text):
             return
 
-        # Angka hanya dianggap "pilih pelajaran" saat belum ada pelajaran aktif.
-        subject_active = bool(_state(phone).get("subject"))
-        cmd, value = parse_command(text, subject_active=subject_active)
+        # Angka hanya dianggap "pilih pelajaran/sub-menu" saat belum ada
+        # pelajaran aktif.
+        st = _state(phone)
+        subject_active = bool(st.get("subject"))
+        cmd, value = parse_command(
+            text, subject_active=subject_active, group_key=st.get("pending_group")
+        )
 
         if cmd == "start":
             handle_start(client, ev, phone)

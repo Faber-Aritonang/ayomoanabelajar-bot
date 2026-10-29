@@ -21,7 +21,8 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 | Perintah | Fungsi |
 |---|---|
 | `menu` atau `mulai` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
-| `1` … `6` | Pilih pelajaran (Matematika, Bahasa Indonesia, dll.) |
+| `1` … `7` | Pilih pelajaran; `7` membuka 8 sub-menu Ayo Sain Olimpiade |
+| `1` … `8` | Pilih sub-menu setelah Ayo Sain Olimpiade dibuka |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
 | 🎤 *(voice note)* | Tanya dengan suara — transkripsi otomatis (Groq Whisper) |
 | `kuis` atau `soal` | Kuis adaptif pelajaran aktif — 5 soal, **benar +10 poin / salah 0**, skor tersimpan. Jawab dengan satu huruf A–D; jawaban yang menyebut lebih dari satu pilihan ditolak, dan setiap jawaban disertai penjelasan singkat. |

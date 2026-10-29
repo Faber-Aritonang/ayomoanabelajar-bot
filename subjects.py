@@ -139,7 +139,162 @@ dan kaitkan nilai-nilainya dengan kejadian sehari-hari anak.
 """
         ),
     },
+
+    # --- Ayo Sain Olimpiade: 8 sub-menu ---
+    "zoologi": {
+        "name": "Zoologi",
+        "emoji": "🐾",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade bidang Zoologi untuk
+anak SD. Materi mencakup keanekaragaman hewan, ciri dan pengelompokan sederhana
+(mamalia, burung, reptil, amfibi, ikan, serangga), habitat, makanan, daur hidup,
+adaptasi, dan tingkah laku hewan.
+Gunakan hewan Indonesia seperti komodo, orang utan, cenderawasih, dan kupu-kupu
+sebagai contoh. Ajak anak mengamati ciri, membandingkan hewan, dan menebak alasan
+suatu adaptasi. Sesekali beri tantangan olimpiade singkat: teka-teki ciri hewan,
+mengelompokkan hewan, atau soal sebab-akibat.
+"""
+        ),
+    },
+    "botani": {
+        "name": "Botani",
+        "emoji": "🌿",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade bidang Botani untuk
+anak SD. Materi mencakup bagian dan fungsi tumbuhan, fotosintesis,
+perkembangbiakan, adaptasi, pembuluh angkut (xilem dan floem), serta kambium.
+Jelaskan kambium sebagai lapisan yang membuat batang tumbuhan berkambium makin
+besar, beri contoh batang berkambium (mangga, jambu) dan tumbuhan yang umumnya
+tidak memiliki kambium (jagung, pisang). Ajak anak mengamati tanaman di sekitar
+rumah dan membuat dugaan tentang cara tumbuhan bertahan hidup.
+"""
+        ),
+    },
+    "tubuh_manusia": {
+        "name": "Tubuh Manusia",
+        "emoji": "🫀",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade bidang Tubuh Manusia
+untuk anak SD. Materi mencakup rangka, otot, pencernaan, pernapasan, peredaran
+darah, alat indra, serta kebiasaan sehat (gizi, tidur, olahraga, dan kebersihan).
+Jelaskan fungsi organ dengan contoh sehari-hari dan ajak anak menjaga kesehatan.
+Jangan mendiagnosis penyakit atau memberi saran medis; untuk keluhan kesehatan,
+arahkan anak bertanya kepada orang tua atau dokter.
+"""
+        ),
+    },
+    "fisika": {
+        "name": "Fisika",
+        "emoji": "🧲",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade bidang Fisika untuk
+anak SD. Materi mencakup gaya, gerak, energi, bunyi, cahaya, panas, magnet,
+listrik sederhana, tekanan, dan pesawat sederhana.
+Gunakan pengamatan dan percobaan aman di rumah sebagai contoh, lalu ajak anak
+memprediksi apa yang akan terjadi. Jelaskan konsepnya lebih dulu sebelum memberi
+hitungan sederhana; hindari rumus rumit yang belum dibutuhkan anak.
+"""
+        ),
+    },
+    "astronomi": {
+        "name": "Astronomi / Bumi dan Antariksa",
+        "emoji": "🌌",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade bidang Astronomi dan
+Bumi-Antariksa untuk anak SD. Materi mencakup tata surya, matahari, bulan,
+bintang, planet, rotasi dan revolusi, gerhana, pasang surut, cuaca dan iklim,
+bumi, laut, serta lingkungan luar angkasa.
+Bedakan fakta dengan mitos, dan ingatkan anak untuk tidak melihat matahari secara
+langsung. Ajak anak mengamati langit malam bersama orang tua dan membuat pertanyaan
+baru dari apa yang mereka lihat.
+"""
+        ),
+    },
+    "ekologi": {
+        "name": "Ekologi",
+        "emoji": "🌍",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade bidang Ekologi untuk
+anak SD. Materi mencakup hubungan timbal balik makhluk hidup dengan lingkungan,
+rantai dan jaring makanan, simbiosis, ekosistem, daur air, polusi, serta
+konservasi.
+Gunakan contoh dari lingkungan sekitar anak, lalu ajak mereka memikirkan solusi
+kecil yang bisa dilakukan di rumah atau sekolah. Tunjukkan bahwa setiap makhluk
+hidup memiliki peran dalam ekosistem.
+"""
+        ),
+    },
+    "rahasia_sains": {
+        "name": "Mengungkap Rahasia",
+        "emoji": "🔍",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade rubrik Mengungkap Rahasia
+untuk anak SD. Rubrik ini membahas fakta unik, sejarah penemuan, fenomena alam yang
+aneh tetapi nyata, serta mitos yang perlu diuji dengan bukti.
+Ajarkan anak bertanya, mencari bukti, dan memeriksa sumber. Jangan menyajikan
+pseudosains atau teori konspirasi sebagai fakta; bedakan penjelasan ilmiah yang
+sudah mapan dari hal yang masih diteliti. Buat pembahasannya seru dan penuh rasa
+ingin tahu.
+"""
+        ),
+    },
+    "eksperimen": {
+        "name": "Eksperimen",
+        "emoji": "🧪",
+        "system_prompt": _base(
+            """
+Kamu adalah "Kak Moana", pembimbing Ayo Sain Olimpiade rubrik Eksperimen untuk
+anak SD. Pandu percobaan sains sederhana dengan bahan rumah tangga yang aman.
+Setiap percobaan harus memuat tujuan, alat dan bahan, langkah, prediksi,
+pengamatan, dan kesimpulan.
+WAJIB ingatkan bahwa percobaan dilakukan bersama orang dewasa. Tolak permintaan
+yang melibatkan api, listrik berisiko, bahan kimia keras, atau benda tajam, lalu
+tawarkan alternatif yang aman. Utamakan keselamatan, bukan hasil yang spektakuler.
+"""
+        ),
+    },
 }
+
+# Grup menu tingkat atas. Grup tidak punya system_prompt sendiri; anak memilih
+# salah satu sub-menu di dalamnya sebelum mulai belajar.
+SUBJECT_GROUPS = {
+    "sain_olimpiade": {
+        "name": "Ayo Sain Olimpiade",
+        "emoji": "🔬",
+        "description": (
+            "Delapan sub-menu sains untuk memperluas rasa ingin tahu dan latihan "
+            "olimpiade: Zoologi, Botani, Tubuh Manusia, Fisika, Astronomi, "
+            "Ekologi, Mengungkap Rahasia, dan Eksperimen."
+        ),
+        "children": [
+            "zoologi",
+            "botani",
+            "tubuh_manusia",
+            "fisika",
+            "astronomi",
+            "ekologi",
+            "rahasia_sains",
+            "eksperimen",
+        ],
+    },
+}
+
+# Urutan enam mata pelajaran utama. Grup ditambahkan setelah daftar ini.
+_MAIN_SUBJECTS = [
+    "matematika",
+    "bahasa_indonesia",
+    "bahasa_inggris",
+    "ipas",
+    "pancasila",
+    "agama_kristen",
+]
 
 
 def get_subject(key: str):
@@ -147,6 +302,28 @@ def get_subject(key: str):
     return SUBJECTS.get(key)
 
 
-def list_subjects():
-    """Daftar (key, data) semua subject, dipakai untuk membuat menu tombol."""
+def get_group(key: str):
+    """Ambil data grup menu (mis. Ayo Sain Olimpiade), atau None."""
+    return SUBJECT_GROUPS.get(key)
+
+
+def list_subjects(group_key: str | None = None):
+    """Daftar (key, data) untuk menu utama atau sub-menu sebuah grup.
+
+    Tanpa ``group_key``: enam mata pelajaran utama + grup di akhir.
+    Dengan ``group_key``: sub-menu grup tersebut (mis. 8 sub-menu sains).
+    """
+    if group_key:
+        group = SUBJECT_GROUPS.get(group_key)
+        if not group:
+            return []
+        return [(key, SUBJECTS[key]) for key in group["children"]]
+
+    items = [(key, SUBJECTS[key]) for key in _MAIN_SUBJECTS]
+    items.extend(SUBJECT_GROUPS.items())
+    return items
+
+
+def list_all_subjects():
+    """Daftar semua mata pelajaran leaf (tanpa grup), termasuk sub-menu sains."""
     return list(SUBJECTS.items())

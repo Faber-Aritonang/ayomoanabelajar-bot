@@ -90,7 +90,7 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
 
     # --- Perintah dasar -------------------------------------------------
 
-    async def test_start_mereset_state_dan_menampilkan_enam_pelajaran(self):
+    async def test_start_mereset_state_dan_menampilkan_tujuh_menu(self):
         self.context.user_data.update(subject="matematika", quiz={"key": "A"})
         await telegram_bot.start(self.update, self.context)
         self.assertNotIn("subject", self.context.user_data)
@@ -98,9 +98,11 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         text = self.message.reply_markdown.await_args.args[0]
         self.assertIn("Selamat datang", text)
         markup = self.message.reply_markdown.await_args.kwargs["reply_markup"]
-        labels = [button.text for row in markup.inline_keyboard for button in row]
-        self.assertEqual(len(labels), 6)
-        self.assertIn("Matematika", labels[0])
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        self.assertEqual(len(buttons), 7)
+        self.assertIn("Matematika", buttons[0].text)
+        self.assertIn("Ayo Sain Olimpiade", buttons[-1].text)
+        self.assertEqual(buttons[-1].callback_data, "group:sain_olimpiade")
 
     async def test_help_dan_menu_menampilkan_perintah_utama(self):
         await telegram_bot.help_command(self.update, self.context)
@@ -114,7 +116,7 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(command, menu)
         markup = self.message.reply_markdown.await_args.kwargs["reply_markup"]
         callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
-        self.assertEqual(callbacks, ["voice:perempuan", "voice:laki-laki"])
+        self.assertEqual(callbacks, ["voice:perempuan", "voice:laki-laki", "menu:main"])
 
     async def test_suara_valid_disimpan_dan_pilihan_tidak_dikenal_ditolak(self):
         self.context.args = ["robot"]
@@ -148,6 +150,35 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.add_messages(1)
         await telegram_bot.streak_command(self.update, self.context)
         self.assertIn("1 hari berturut-turut", self.message.reply_markdown.await_args.args[0])
+
+    async def test_grup_sain_olimpiade_menampilkan_delapan_sub_menu(self):
+        query = self.make_callback("group:sain_olimpiade")
+        with patch.object(telegram_bot.whitelist, "is_allowed", return_value=True):
+            await telegram_bot.group_chosen(self.update, self.context)
+
+        teks = query.edit_message_text.await_args.args[0]
+        self.assertIn("Ayo Sain Olimpiade", teks)
+        self.assertIn("Zoologi", teks)
+        markup = query.edit_message_text.await_args.kwargs["reply_markup"]
+        tombol = [button for row in markup.inline_keyboard for button in row]
+        self.assertEqual(len(tombol), 9)  # 8 sub-menu + kembali
+        self.assertEqual(tombol[0].callback_data, "subject:zoologi")
+        self.assertEqual(tombol[-1].callback_data, "menu:main")
+        labels = [button.text for button in tombol]
+        self.assertIn("🐾 Zoologi", labels)
+        self.assertIn("🌿 Botani", labels)
+        self.assertIn("🫀 Tubuh Manusia", labels)
+        self.assertIn("🧲 Fisika", labels)
+        self.assertIn("🌌 Astronomi / Bumi dan Antariksa", labels)
+        self.assertIn("🌍 Ekologi", labels)
+        self.assertIn("🔍 Mengungkap Rahasia", labels)
+        self.assertIn("🧪 Eksperimen", labels)
+
+        query = self.make_callback("subject:zoologi")
+        with patch.object(telegram_bot.whitelist, "is_allowed", return_value=True):
+            await telegram_bot.subject_chosen(self.update, self.context)
+        self.assertEqual(self.context.user_data["subject"], "zoologi")
+        self.assertIn("Zoologi", query.edit_message_text.await_args.args[0])
 
     # --- Kuis -----------------------------------------------------------
 

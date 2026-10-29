@@ -10,6 +10,7 @@ Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih
 ## ✨ Fitur Utama (v1.4.6)
 
 - 🤖 **AI Chat Tutor**: Pendamping belajar dengan prompt khusus per mata pelajaran, dibimbing langkah demi langkah (bukan langsung memberi jawaban PR).
+- 🔬 **Ayo Sain Olimpiade**: Menu sains dengan **8 sub-menu** — Zoologi, Botani, Tubuh Manusia, Fisika, Astronomi/Bumi dan Antariksa, Ekologi, Mengungkap Rahasia, dan Eksperimen. Setiap sub-menu punya prompt tutor dan alur belajar sendiri.
 - 📈 **Kuis Adaptif Berpoin**: 5 soal pilihan ganda per sesi. Tingkat kesulitan menyesuaikan riwayat obrolan; jawaban benar **+10 poin**, salah **0 poin**. Kunci jawaban tidak pernah ditampilkan ke anak, dan skor tersimpan di database. Di Telegram, jawaban bisa diketik atau diklik lewat tombol **A–D**; jawaban yang menyebut lebih dari satu pilihan ditolak dan anak diminta memilih satu. Setelah dijawab, bot menampilkan penjelasan singkat mengapa jawaban itu benar atau salah.
 - ⭐ **Gamifikasi Bintang**: `/bintang` (Telegram) atau `bintang` (WhatsApp) menampilkan koleksi bintang — 1 bintang untuk setiap 5 interaksi belajar.
 - 🔥 **Streak Belajar Harian**: Hari belajar berturut-turut dihitung dari riwayat database dan ditampilkan lewat `/streak` / `streak`.
@@ -26,13 +27,28 @@ Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih
 
 ## 📚 Mata Pelajaran
 
-Matematika, Bahasa Indonesia, Bahasa Inggris, IPAS, Pendidikan Pancasila, dan Pendidikan Agama Kristen — masing-masing dengan prompt guru di `subjects.py`. Materi buku cetak opsional dibaca dari `materials/<pelajaran>.md` (lokal) atau `/etc/secrets/<pelajaran>.md` (Render Secret Files); file materi tidak ikut di-commit karena alasan hak cipta.
+Enam mata pelajaran utama: Matematika, Bahasa Indonesia, Bahasa Inggris, IPAS, Pendidikan Pancasila, dan Pendidikan Agama Kristen. Masing-masing punya prompt guru di `subjects.py`.
+
+Di dalam menu **🔬 Ayo Sain Olimpiade** tersedia 8 sub-menu:
+
+| Sub-menu | Fokus |
+|---|---|
+| 🐾 Zoologi | Dunia hewan, ciri, habitat, adaptasi, dan pengelompokan. |
+| 🌿 Botani | Dunia tumbuhan, fotosintesis, pembuluh angkut, dan kambium. |
+| 🫀 Tubuh Manusia | Struktur, fungsi organ, dan kesehatan tubuh manusia. |
+| 🧲 Fisika | Gaya, gerak, energi, bunyi, cahaya, panas, magnet, dan listrik sederhana. |
+| 🌌 Astronomi / Bumi dan Antariksa | Benda langit, tata surya, fenomena alam, bumi, laut, dan antariksa. |
+| 🌍 Ekologi | Hubungan makhluk hidup dengan lingkungan, rantai makanan, dan konservasi. |
+| 🔍 Mengungkap Rahasia | Fakta unik, sejarah penemuan, dan mitos yang diuji dengan bukti. |
+| 🧪 Eksperimen | Percobaan sains sederhana yang aman dengan dampingan orang dewasa. |
+
+Materi buku cetak opsional dibaca dari `materials/<pelajaran>.md` (lokal) atau `/etc/secrets/<pelajaran>.md` (Render Secret Files); file materi tidak ikut di-commit karena alasan hak cipta.
 
 ## 💬 Perintah Telegram
 
 | Perintah | Fungsi |
 |---|---|
-| `/start` | Mulai dari awal dan pilih pelajaran lewat tombol |
+| `/start` | Mulai dari awal dan pilih pelajaran lewat tombol, termasuk sub-menu Ayo Sain Olimpiade |
 | `/menu` | Dasbor navigasi dan ganti pelajaran |
 | `/kuis` | Mulai kuis adaptif pelajaran aktif — jawab lewat tombol A–D atau ketik hurufnya |
 | `/bintang` | Lihat koleksi bintang ⭐ |
@@ -45,6 +61,8 @@ Matematika, Bahasa Indonesia, Bahasa Inggris, IPAS, Pendidikan Pancasila, dan Pe
 | `/tambah`, `/hapus`, `/daftar` | *(Admin)* Kelola whitelist |
 | 🎤 *(voice note)* | Tanya dengan suara — ditranskripsi otomatis |
 
+> Tombol **🔬 Ayo Sain Olimpiade** membuka 8 sub-menu. Gunakan tombol **⬅️ Kembali** atau `/menu` untuk kembali ke daftar utama.
+
 ## 💬 Perintah WhatsApp
 
 WhatsApp tidak punya tombol inline, jadi semua perintah diketik.
@@ -52,7 +70,8 @@ WhatsApp tidak punya tombol inline, jadi semua perintah diketik.
 | Perintah | Fungsi |
 |---|---|
 | `menu` / `mulai` / `ganti` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
-| `1` … `6` | Pilih pelajaran |
+| `1` … `7` | Pilih pelajaran; `7` membuka sub-menu Ayo Sain Olimpiade |
+| `1` … `8` | Pilih sub-menu setelah Ayo Sain Olimpiade dibuka |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
 | 🎤 *(voice note)* | Tanya dengan suara — ditranskripsi otomatis (Groq Whisper) |
 | `kuis` / `soal` / `latihan` | Kuis adaptif pelajaran aktif — jawab dengan satu huruf A–D |
@@ -96,7 +115,7 @@ Nonaktif secara default (semua orang bisa memakai bot). Untuk mengaktifkan:
 | `telegram_bot.py` | Bot Telegram: handler, tombol, webhook/polling, health check |
 | `whatsapp_bot.py` | Bot WhatsApp: handler Neonize, QR/pairing, keep-alive, health check |
 | `llm.py` | Wrapper Anthropic Claude + pemuatan materi |
-| `subjects.py` | Prompt guru untuk 6 mata pelajaran |
+| `subjects.py` | Prompt guru untuk 6 mata pelajaran utama + 8 sub-menu Ayo Sain Olimpiade |
 | `database.py` | Model & query SQLAlchemy (riwayat, skor, whitelist, suara) |
 | `quiz.py` | Logika kuis adaptif bersama |
 | `stt.py` | Transkripsi voice note via Groq |
@@ -164,9 +183,9 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 ## 🧪 Tes Offline
 
 ```bash
-python3 test_whatsapp_bot.py      # 55 skenario, 90 pemeriksaan
+python3 test_whatsapp_bot.py      # 61 skenario, 99 pemeriksaan
 python3 test_telegram_voice.py    # 6 unit test suara & database
-python3 test_telegram_bot.py      # 31 unit test handler & perintah
+python3 test_telegram_bot.py      # 32 unit test handler & perintah
 ```
 
 `test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. `test_telegram_bot.py` menguji handler dan perintah Telegram dengan mock untuk AI/Telegram/Groq. Semua tes memakai database terpisah dan tidak menyentuh data asli; tes Telegram juga tidak memanggil API berbayar.
@@ -176,6 +195,14 @@ Workflow GitHub Actions di `.github/workflows/tests.yml` menjalankan ketiga tes 
 ## Perencanaan Pengembangan Proyek
 
 Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semua item di bawah **belum tersedia** kecuali disebutkan lain. Urutannya disusun berdasarkan risiko dan dampak, bukan target tanggal yang mengikat.
+
+### Sudah diimplementasikan
+
+- **Menu Ayo Sain Olimpiade** — grup menu baru di bawah daftar pelajaran utama, berisi 8 sub-menu: Zoologi, Botani, Tubuh Manusia, Fisika, Astronomi/Bumi dan Antariksa, Ekologi, Mengungkap Rahasia, dan Eksperimen.
+  - Setiap sub-menu memiliki prompt tutor, riwayat belajar, dan kuis adaptif sendiri.
+  - Di Telegram, tombol grup membuka sub-menu dan tombol **⬅️ Kembali** mengembalikan ke daftar utama.
+  - Di WhatsApp, pilih `7` untuk membuka grup lalu pilih angka `1`–`8` untuk sub-menu.
+  - Sub-menu Eksperimen membatasi percobaan pada bahan yang aman dan mewajibkan dampingan orang dewasa.
 
 ### Fokus utama
 

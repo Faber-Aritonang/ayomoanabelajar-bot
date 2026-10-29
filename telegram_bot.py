@@ -35,7 +35,7 @@ import stt
 import tts
 import whitelist
 from llm import get_ai_reply
-from subjects import get_subject, list_subjects
+from subjects import get_group, get_subject, list_subjects
 
 load_dotenv()
 
@@ -102,7 +102,18 @@ def build_subject_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for key, data in list_subjects():
         label = f"{data['emoji']} {data['name']}"
-        buttons.append([InlineKeyboardButton(label, callback_data=f"subject:{key}")])
+        prefix = "group" if get_group(key) else "subject"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"{prefix}:{key}")])
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_group_keyboard(group_key: str) -> InlineKeyboardMarkup:
+    """Tombol sub-menu untuk grup seperti Ayo Sain Olimpiade."""
+    buttons = [
+        [InlineKeyboardButton(f"{data['emoji']} {data['name']}", callback_data=f"subject:{key}")]
+        for key, data in list_subjects(group_key)
+    ]
+    buttons.append([InlineKeyboardButton("⬅️ Kembali", callback_data="menu:main")])
     return InlineKeyboardMarkup(buttons)
 
 
@@ -340,6 +351,43 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subject_name = get_subject(subject_key)["name"]
     await update.message.reply_text(
         f"Oke, obrolan {subject_name} kita mulai dari awal lagi ya! 🔄"
+    )
+
+
+async def group_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tampilkan sub-menu untuk grup pelajaran, mis. Ayo Sain Olimpiade."""
+    query = update.callback_query
+    user = query.from_user
+    if not whitelist.is_allowed(str(user.id), platform="telegram"):
+        await query.answer(whitelist.REJECT_TEXT, show_alert=True)
+        return
+
+    group_key = query.data.split(":", 1)[1]
+    group = get_group(group_key)
+    if not group or not list_subjects(group_key):
+        await query.answer("Grup pelajaran itu tidak ditemukan.", show_alert=True)
+        return
+
+    await query.answer()
+    await query.edit_message_text(
+        f"{group['emoji']} *{group['name']}*\n\n{group['description']}\n\n"
+        "Pilih salah satu sub-menu di bawah ini:",
+        parse_mode="Markdown",
+        reply_markup=build_group_keyboard(group_key),
+    )
+
+
+async def main_menu_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kembali dari sub-menu ke daftar pelajaran utama."""
+    query = update.callback_query
+    user = query.from_user
+    if not whitelist.is_allowed(str(user.id), platform="telegram"):
+        await query.answer(whitelist.REJECT_TEXT, show_alert=True)
+        return
+    await query.answer()
+    await query.edit_message_text(
+        "Halo, Adik! 👋 Pilih dulu mau belajar apa hari ini:",
+        reply_markup=build_subject_keyboard(),
     )
 
 
@@ -597,6 +645,8 @@ def main():
     # Catatan: CallbackQueryHandler (PTB >= 21) tidak menerima argumen `filters`;
     # cek whitelist dilakukan di dalam masing-masing handler callback.
     app.add_handler(CallbackQueryHandler(quiz_answer_chosen, pattern=r"^quiz:"))
+    app.add_handler(CallbackQueryHandler(group_chosen, pattern=r"^group:"))
+    app.add_handler(CallbackQueryHandler(main_menu_chosen, pattern=r"^menu:"))
     app.add_handler(CallbackQueryHandler(subject_chosen, pattern=r"^subject:"))
     app.add_handler(CallbackQueryHandler(voice_chosen, pattern=r"^voice:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & WL_FILTER, handle_message))
@@ -796,7 +846,9 @@ async def menu_command(update, context):
     pesan += "• /rapor - Baca analisis evaluasi dari AI Tutor\n\n"
     pesan += "Ketik salah satu perintah di atas kapan saja ya!"
     
-    await update.message.reply_markdown(pesan, reply_markup=build_voice_keyboard())
+    rows = [list(row) for row in build_voice_keyboard().inline_keyboard]
+    rows.append([InlineKeyboardButton("🗂️ Pilih pelajaran", callback_data="menu:main")])
+    await update.message.reply_markdown(pesan, reply_markup=InlineKeyboardMarkup(rows))
 
 
 if __name__ == "__main__":

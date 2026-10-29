@@ -199,6 +199,18 @@ def main():
     run("pilih pelajaran 4", make_event("4", phone=fresh_user()), expect="IPAS")
     run("pilih pelajaran 6", make_event("6", phone=fresh_user()), expect="Agama Kristen")
 
+    # --- Sub-menu Ayo Sain Olimpiade ---
+    p = fresh_user()
+    run("pilih menu 7 -> 8 sub-menu sains", make_event("7", phone=p), expect="Zoologi")
+    run("pilih sub-menu 1 -> Zoologi", make_event("1", phone=p), expect="belajar *Zoologi*")
+    p = fresh_user()
+    run("pilih grup sains lagi", make_event("7", phone=p), expect="Eksperimen")
+    run("pilih sub-menu 8 -> Eksperimen", make_event("8", phone=p), expect="belajar *Eksperimen*")
+
+    p = fresh_user(); belajar(p)
+    run("menu saat pelajaran aktif membuka daftar", make_event("menu", phone=p), expect="Ayo Sain Olimpiade")
+    run("pilih pelajaran setelah menu", make_event("1", phone=p), expect="Matematika")
+
     # Chat bebas & kuis: butuh pelajaran aktif dulu.
     p = fresh_user(); belajar(p)
     run("chat bebas", make_event("kenapa langit biru?", phone=p), expect="AI uji: kenapa langit biru?")
@@ -373,13 +385,17 @@ def main():
         ("semangat", ("streak", None)),
         ("1", ("pilih_subject", 1)),
         ("6", ("pilih_subject", 6)),
-        ("7", ("chat", "7")),
+        ("7", ("pilih_subject", 7)),
+        ("8", ("chat", "8")),
         ("2+2 berapa?", ("chat", "2+2 berapa?")),
     ]
     for raw, expected in parse_cases:
         got = wb.parse_command(raw, subject_active=False)
         ok = got == expected
         results.append((f"parse({raw!r})", ok, "OK" if ok else f"harus {expected}, ternyata {got}"))
+
+    got = wb.parse_command("8", subject_active=False, group_key="sain_olimpiade")
+    results.append(("parse('8') di sub-menu sains", got == ("pilih_subject", 8), f"{got}"))
 
     # --- Whitelist akses bot ---
     admin = "6281111111111"

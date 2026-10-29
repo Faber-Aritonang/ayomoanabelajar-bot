@@ -97,6 +97,7 @@ Kegagalan transkripsi ditangkap di masing-masing handler dan dijawab dengan pesa
 
 - [ ] `python3 test_whatsapp_bot.py` lulus (54 skenario, 89 pemeriksaan).
 - [ ] `python3 test_telegram_voice.py` lulus (6 unit test).
+- [ ] `python3 test_telegram_bot.py` lulus (21 unit test handler & perintah).
 - [ ] Perubahan mode suara ditangani di kedua platform, atau keterbatasannya didokumentasikan.
 - [ ] Balasan teks tetap terkirim saat STT/TTS gagal.
 - [ ] File sementara dibersihkan dan tidak ada secret yang masuk log.

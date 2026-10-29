@@ -104,6 +104,7 @@ Nonaktif secara default (semua orang bisa memakai bot). Untuk mengaktifkan:
 | `reminders.py` | Logika pengingat belajar bersama |
 | `test_whatsapp_bot.py` | Simulasi offline bot WhatsApp |
 | `test_telegram_voice.py` | Unit test suara, database, dan log Telegram |
+| `test_telegram_bot.py` | Unit test handler dan perintah Telegram |
 | `CONTRIBUTING.md` | Panduan kontributor dan pola implementasi mode suara |
 
 ## 🚀 Menjalankan Lokal
@@ -162,10 +163,11 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 
 ```bash
 python3 test_whatsapp_bot.py      # 54 skenario, 89 pemeriksaan
-python3 test_telegram_voice.py    # 6 unit test
+python3 test_telegram_voice.py    # 6 unit test suara & database
+python3 test_telegram_bot.py      # 21 unit test handler & perintah
 ```
 
-`test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. Kedua tes memakai database terpisah dan tidak menyentuh data asli.
+`test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. `test_telegram_bot.py` menguji handler dan perintah Telegram dengan mock untuk AI/Telegram/Groq. Semua tes memakai database terpisah dan tidak menyentuh data asli; tes Telegram juga tidak memanggil API berbayar.
 
 ## 📝 Changelog
 

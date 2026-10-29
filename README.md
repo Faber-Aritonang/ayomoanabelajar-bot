@@ -104,6 +104,7 @@ Nonaktif secara default (semua orang bisa memakai bot). Untuk mengaktifkan:
 | `reminders.py` | Logika pengingat belajar bersama |
 | `test_whatsapp_bot.py` | Simulasi offline bot WhatsApp |
 | `test_telegram_voice.py` | Unit test suara, database, dan log Telegram |
+| `CONTRIBUTING.md` | Panduan kontributor dan pola implementasi mode suara |
 
 ## 🚀 Menjalankan Lokal
 

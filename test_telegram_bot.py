@@ -186,6 +186,60 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("quiz", self.context.user_data)
 
+    async def test_jawaban_kuis_benar_menambah_poin_dan_lanjut_soal(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={
+                "subject": "matematika",
+                "key": "B",
+                "score": 0,
+                "total": 0,
+                "question": "Soal lama",
+            },
+        )
+        next_question = "Soal berikutnya: 3 + 4?\nA. 6\nB. 7\nKUNCI: B"
+        with patch.object(telegram_bot.quiz, "get_ai_reply", return_value=next_question):
+            await telegram_bot.process_text(self.update, self.context, "B")
+
+        feedback = self.message.reply_markdown.await_args_list[0].args[0]
+        self.assertIn("BENAR", feedback)
+        self.assertIn("+10 poin", feedback)
+        self.assertIn("*10* poin", feedback)
+        self.assertNotIn("KUNCI", feedback)
+        self.assertEqual(self.context.user_data["quiz"]["score"], 10)
+        self.assertEqual(self.context.user_data["quiz"]["total"], 1)
+
+        soal = self.message.reply_markdown.await_args_list[1].args[0]
+        self.assertIn("Kuis Adaptif (Matematika)", soal)
+        self.assertIn("Soal berikutnya: 3 + 4?", soal)
+        self.assertNotIn("KUNCI", soal)
+        self.assertEqual(database.get_quiz_summary(USER_ID), [])
+
+    async def test_jawaban_kuis_salah_tidak_menambah_poin_dan_menyimpan_skor(self):
+        self.context.user_data.update(
+            subject="matematika",
+            quiz={
+                "subject": "matematika",
+                "key": "C",
+                "score": 20,
+                "total": 4,
+                "question": "Soal terakhir",
+            },
+        )
+        await telegram_bot.process_text(self.update, self.context, "A")
+
+        feedback = self.message.reply_markdown.await_args.args[0]
+        self.assertIn("Belum tepat", feedback)
+        self.assertIn("Jawaban yang benar adalah *C*", feedback)
+        self.assertIn("*20* poin", feedback)
+        self.assertIn("Kuis selesai", feedback)
+        self.assertNotIn("+10", feedback)
+        self.assertNotIn("quiz", self.context.user_data)
+        self.assertEqual(
+            [tuple(row) for row in database.get_quiz_summary(USER_ID)],
+            [("matematika", 20, 5)],
+        )
+
     # --- Laporan, bintang, rapor ---------------------------------------
 
     async def test_laporan_kosong_dan_berisi_rekap(self):

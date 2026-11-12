@@ -128,18 +128,52 @@ def voice_choice(voice: str) -> str:
     return VOICE_KEYS.get(value, "perempuan")
 
 
+def _env_value(name: str) -> str:
+    """Baca env dan buang spasi serta kutip yang ikut ter-paste."""
+    value = os.getenv(name, "").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value
+
+
 def _elevenlabs_voice_id(choice: str) -> str:
     env_name = "ELEVENLABS_VOICE_ID_MALE" if choice == "laki-laki" else "ELEVENLABS_VOICE_ID_FEMALE"
-    return os.getenv(env_name, "").strip()
+    return _env_value(env_name)
+
+
+def elevenlabs_status(choice: str) -> tuple[bool, str]:
+    """Cek kesiapan ElevenLabs tanpa membocorkan isi API key."""
+    if not _env_value("ELEVENLABS_API_KEY"):
+        return False, "ELEVENLABS_API_KEY kosong"
+    voice_id = _elevenlabs_voice_id(choice)
+    if not voice_id:
+        env_name = "ELEVENLABS_VOICE_ID_MALE" if choice == "laki-laki" else "ELEVENLABS_VOICE_ID_FEMALE"
+        return False, f"{env_name} kosong"
+    return True, _env_value("ELEVENLABS_MODEL_ID") or ELEVENLABS_DEFAULT_MODEL
+
+
+def voice_engine(choice: str) -> str:
+    """Nama mesin yang akan dipakai untuk pilihan suara ini."""
+    return "ElevenLabs" if elevenlabs_status(choice)[0] else "Edge TTS"
+
+
+def log_elevenlabs_status() -> None:
+    """Catat kesiapan ElevenLabs saat bot mulai, tanpa menampilkan secret."""
+    for choice in EDGE_VOICES:
+        ready, info = elevenlabs_status(choice)
+        if ready:
+            logger.info("TTS %s: ElevenLabs aktif (model %s)", choice, info)
+        else:
+            logger.warning("TTS %s: ElevenLabs nonaktif (%s), memakai Edge TTS", choice, info)
 
 
 def _elevenlabs_config(choice: str) -> tuple[str, str, str] | None:
     """Kembalikan (api_key, voice_id, model_id), atau None bila belum diisi."""
-    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    api_key = _env_value("ELEVENLABS_API_KEY")
     voice_id = _elevenlabs_voice_id(choice)
     if not api_key or not voice_id:
         return None
-    model_id = os.getenv("ELEVENLABS_MODEL_ID", "").strip() or ELEVENLABS_DEFAULT_MODEL
+    model_id = _env_value("ELEVENLABS_MODEL_ID") or ELEVENLABS_DEFAULT_MODEL
     return api_key, voice_id, model_id
 
 
@@ -153,7 +187,13 @@ async def _elevenlabs_audio(text: str, voice_id: str, api_key: str, model_id: st
             headers={"xi-api-key": api_key},
             json={"text": text, "model_id": model_id},
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail", {})
+                message = detail.get("message") if isinstance(detail, dict) else detail
+            except Exception:
+                message = response.text[:200]
+            raise RuntimeError(f"HTTP {response.status_code}: {message or 'tanpa detail'}")
         audio_bytes = response.content
     if not audio_bytes:
         raise ValueError("ElevenLabs menghasilkan audio kosong")
@@ -213,7 +253,7 @@ def is_tts_available() -> bool:
     if edge_tts is not None or gTTS is not None:
         return True
     return bool(
-        os.getenv("ELEVENLABS_API_KEY", "").strip()
+        _env_value("ELEVENLABS_API_KEY")
         and (_elevenlabs_voice_id("perempuan") or _elevenlabs_voice_id("laki-laki"))
     )
 

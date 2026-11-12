@@ -166,6 +166,8 @@ Login pertama kali: scan QR dari `http://localhost:10000/qr` (atau buka dari HP 
 | `ELEVENLABS_API_KEY` | Opsional | Mengaktifkan suara ElevenLabs; wajib bila memakai ElevenLabs |
 | `ELEVENLABS_VOICE_ID_MALE`, `ELEVENLABS_VOICE_ID_FEMALE` | Opsional | Voice ID suara pria dan wanita dari elevenlabs.io |
 | `ELEVENLABS_MODEL_ID` | Opsional | Model ElevenLabs; default `eleven_multilingual_v2` |
+
+> ⚠️ **Deploy Render tidak membaca `.env` lokal.** Isi variabel `ELEVENLABS_*` di dashboard Render, pada service yang dipakai (Telegram: `ayomoanabelajar-bot`), lalu simpan. Setelah restart, log akan menampilkan `TTS perempuan: ElevenLabs aktif` atau nama variabel yang masih kosong. `/suara` juga menampilkan mesin yang sedang dipakai.
 | `DATABASE_URL` | Disarankan | Postgres/Neon; tanpa ini memakai `chatbot.db` SQLite lokal |
 | `RENDER_EXTERNAL_URL` | Render | Diisi otomatis; dipakai webhook Telegram dan keep-alive WhatsApp |
 | `PORT` | Render | Diisi otomatis; HTTP server WhatsApp & health check |
@@ -193,7 +195,7 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 
 ```bash
 python3 test_whatsapp_bot.py      # 64 skenario, 103 pemeriksaan
-python3 test_telegram_voice.py    # 8 unit test suara & database
+python3 test_telegram_voice.py    # 10 unit test suara & database
 python3 test_telegram_bot.py      # 37 unit test handler & perintah
 ```
 

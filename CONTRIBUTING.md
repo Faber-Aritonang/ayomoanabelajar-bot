@@ -97,7 +97,7 @@ Kegagalan transkripsi ditangkap di masing-masing handler dan dijawab dengan pesa
 ## Checklist Sebelum Mengirim Perubahan
 
 - [ ] `python3 test_whatsapp_bot.py` lulus (64 skenario, 103 pemeriksaan).
-- [ ] `python3 test_telegram_voice.py` lulus (8 unit test).
+- [ ] `python3 test_telegram_voice.py` lulus (10 unit test).
 - [ ] `python3 test_telegram_bot.py` lulus (37 unit test handler & perintah).
 - [ ] Workflow GitHub Actions `Tests` lulus untuk push terakhir.
 - [ ] Perubahan mode suara ditangani di kedua platform, atau keterbatasannya didokumentasikan.

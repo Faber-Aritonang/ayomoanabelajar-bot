@@ -1099,6 +1099,7 @@ def main():
     global _current_client, _STARTED_AT, _LAST_QR_AT
 
     _STARTED_AT = _LAST_QR_AT = time.monotonic()
+    tts.log_elevenlabs_status()
     database.init_db()
     logger.info("%s (WhatsApp) sedang memulai...", BOT_NAME)
 

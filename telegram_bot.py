@@ -157,7 +157,8 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     database.set_telegram_voice(update.effective_user.id, VOICE_CHOICES[choice])
-    await update.message.reply_text(f"Oke, suara balasan dipilih: {choice}. 🎙️")
+    engine = tts.voice_engine(choice)
+    await update.message.reply_text(f"Oke, suara balasan dipilih: {choice} ({engine}). 🎙️")
 
 
 async def quiz_answer_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,8 +214,9 @@ async def voice_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Pilihan suara tidak dikenal.", show_alert=True)
         return
     database.set_telegram_voice(user.id, VOICE_CHOICES[choice])
-    await query.answer(f"Suara {choice} dipilih.")
-    await query.message.reply_text(f"Oke, suara balasan dipilih: {choice}. 🎙️")
+    engine = tts.voice_engine(choice)
+    await query.answer(f"Suara {choice} dipilih ({engine}).")
+    await query.message.reply_text(f"Oke, suara balasan dipilih: {choice} ({engine}). 🎙️")
 
 
 async def streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -640,6 +642,7 @@ def main():
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN tidak ditemukan. Cek file .env kamu.")
 
+    tts.log_elevenlabs_status()
     database.init_db()
 
     app = Application.builder().token(token).build()

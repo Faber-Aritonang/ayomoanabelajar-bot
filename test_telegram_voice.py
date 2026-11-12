@@ -177,6 +177,34 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await tts.text_to_speech("Halo", voice="id-ID-GadisNeural"), b"edge")
         self.assertEqual(used_voices, ["id-ID-GadisNeural"])
 
+    def test_voice_engine_follows_elevenlabs_configuration(self):
+        with patch.dict(os.environ, {
+            "ELEVENLABS_API_KEY": "",
+            "ELEVENLABS_VOICE_ID_FEMALE": "",
+            "ELEVENLABS_VOICE_ID_MALE": "",
+        }):
+            self.assertEqual(tts.voice_engine("perempuan"), "Edge TTS")
+
+        env = {
+            "ELEVENLABS_API_KEY": "test-key",
+            "ELEVENLABS_VOICE_ID_FEMALE": "female-voice",
+            "ELEVENLABS_VOICE_ID_MALE": "",
+        }
+        with patch.dict(os.environ, env):
+            self.assertEqual(tts.voice_engine("perempuan"), "ElevenLabs")
+            self.assertEqual(tts.voice_engine("laki-laki"), "Edge TTS")
+
+    async def test_elevenlabs_env_with_surrounding_quotes(self):
+        env = {
+            "ELEVENLABS_API_KEY": '"test-key"',
+            "ELEVENLABS_VOICE_ID_FEMALE": "'female-voice'",
+            "ELEVENLABS_MODEL_ID": '"eleven_turbo_v2_5"',
+        }
+        with patch.dict(os.environ, env), \
+             patch.object(tts, "_elevenlabs_audio", AsyncMock(return_value=b"eleven")) as speech:
+            self.assertEqual(await tts.text_to_speech("Halo", voice="perempuan"), b"eleven")
+        speech.assert_awaited_once_with("Halo", "female-voice", "test-key", "eleven_turbo_v2_5")
+
 
 if __name__ == "__main__":
     unittest.main()

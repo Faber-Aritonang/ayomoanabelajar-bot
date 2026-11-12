@@ -11,6 +11,16 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech"
+ELEVENLABS_DEFAULT_MODEL = "eleven_multilingual_v2"
+ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128"
+
+# Pilihan suara disimpan di database dengan nama Edge TTS lama. Pemetaan ini
+# menjaga preferensi pengguna yang sudah ada tetap berlaku setelah pindah ke
+# ElevenLabs, sekaligus menjadi cadangan bila ElevenLabs tidak dikonfigurasi.
+EDGE_VOICES = {"perempuan": "id-ID-GadisNeural", "laki-laki": "id-ID-ArdiNeural"}
+VOICE_KEYS = {edge: key for key, edge in EDGE_VOICES.items()}
+
 try:
     import edge_tts
 except ImportError:
@@ -110,19 +120,70 @@ def _gtts_audio(text: str, language: str) -> bytes:
     return buffer.getvalue()
 
 
+def voice_choice(voice: str) -> str:
+    """Ubah nama suara lama atau baru menjadi kunci "perempuan"/"laki-laki"."""
+    value = (voice or "").strip()
+    if value in EDGE_VOICES:
+        return value
+    return VOICE_KEYS.get(value, "perempuan")
+
+
+def _elevenlabs_voice_id(choice: str) -> str:
+    env_name = "ELEVENLABS_VOICE_ID_MALE" if choice == "laki-laki" else "ELEVENLABS_VOICE_ID_FEMALE"
+    return os.getenv(env_name, "").strip()
+
+
+def _elevenlabs_config(choice: str) -> tuple[str, str, str] | None:
+    """Kembalikan (api_key, voice_id, model_id), atau None bila belum diisi."""
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    voice_id = _elevenlabs_voice_id(choice)
+    if not api_key or not voice_id:
+        return None
+    model_id = os.getenv("ELEVENLABS_MODEL_ID", "").strip() or ELEVENLABS_DEFAULT_MODEL
+    return api_key, voice_id, model_id
+
+
+async def _elevenlabs_audio(text: str, voice_id: str, api_key: str, model_id: str) -> bytes:
+    import httpx
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"{ELEVENLABS_TTS_URL}/{voice_id}",
+            params={"output_format": ELEVENLABS_OUTPUT_FORMAT},
+            headers={"xi-api-key": api_key},
+            json={"text": text, "model_id": model_id},
+        )
+        response.raise_for_status()
+        audio_bytes = response.content
+    if not audio_bytes:
+        raise ValueError("ElevenLabs menghasilkan audio kosong")
+    return audio_bytes
+
+
 async def text_to_speech(
     text: str, language: str = "id", voice: str = "id-ID-GadisNeural"
 ) -> Optional[bytes]:
-    """Ubah teks menjadi MP3: Edge TTS dahulu, lalu gTTS jika gagal."""
+    """Ubah teks menjadi MP3: ElevenLabs, lalu Edge TTS, lalu gTTS."""
     if not text or not text.strip():
         logger.warning("Teks kosong")
         return None
     text = prepare_speech_text(text.strip())
+    choice = voice_choice(voice)
+
+    config = _elevenlabs_config(choice)
+    if config:
+        api_key, voice_id, model_id = config
+        try:
+            audio_bytes = await _elevenlabs_audio(text, voice_id, api_key, model_id)
+            logger.info("ElevenLabs berhasil (%s bytes, suara %s)", len(audio_bytes), choice)
+            return audio_bytes
+        except Exception as e:
+            logger.warning("ElevenLabs gagal, memakai Edge TTS: %s", e)
 
     if edge_tts is not None:
         try:
             chunks = []
-            async for chunk in edge_tts.Communicate(text, voice).stream():
+            async for chunk in edge_tts.Communicate(text, EDGE_VOICES[choice]).stream():
                 if chunk["type"] == "audio":
                     chunks.append(chunk["data"])
             audio_bytes = b"".join(chunks)
@@ -148,8 +209,13 @@ async def text_to_speech(
 
 
 def is_tts_available() -> bool:
-    """Cek apakah setidaknya satu library TTS terpasang."""
-    return edge_tts is not None or gTTS is not None
+    """Cek apakah setidaknya satu mesin TTS siap dipakai."""
+    if edge_tts is not None or gTTS is not None:
+        return True
+    return bool(
+        os.getenv("ELEVENLABS_API_KEY", "").strip()
+        and (_elevenlabs_voice_id("perempuan") or _elevenlabs_voice_id("laki-laki"))
+    )
 
 
 def create_voice_file(audio_bytes: bytes, filename: str = "voice.mp3") -> str:

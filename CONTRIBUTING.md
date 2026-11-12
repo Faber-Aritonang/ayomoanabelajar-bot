@@ -11,7 +11,7 @@ pip install -r requirements.txt
 cp .env.example .env    # isi token dan API key
 ```
 
-Python yang dipakai produksi adalah **3.14** (lihat `.python-version`). Untuk mode suara, `GROQ_API_KEY` wajib diisi; TTS tidak memerlukan API key.
+Python yang dipakai produksi adalah **3.14** (lihat `.python-version`). Untuk mode suara, `GROQ_API_KEY` wajib diisi untuk transkripsi. TTS memakai ElevenLabs bila `ELEVENLABS_API_KEY` dan voice ID diisi; tanpa itu Edge TTS tetap berjalan tanpa API key.
 
 ## Peta Modul
 
@@ -20,7 +20,7 @@ Python yang dipakai produksi adalah **3.14** (lihat `.python-version`). Untuk mo
 | `telegram_bot.py` | Handler Telegram, tombol, webhook/polling, pengiriman voice note |
 | `whatsapp_bot.py` | Handler Neonize, deteksi PTT, konversi Ogg Opus, pengiriman voice note |
 | `stt.py` | Transkripsi audio ke teks via Groq Whisper |
-| `tts.py` | Edge TTS + fallback gTTS, pelafalan matematika, file sementara |
+| `tts.py` | ElevenLabs (opsional), Edge TTS + fallback gTTS, pelafalan matematika, file sementara |
 | `llm.py` | Panggilan Claude dan pemuatan materi |
 | `subjects.py` | Prompt guru per mata pelajaran |
 | `database.py` | Riwayat, skor kuis, whitelist, preferensi suara Telegram |
@@ -49,14 +49,14 @@ Kegagalan transkripsi ditangkap di masing-masing handler dan dijawab dengan pesa
 
 **Telegram** — `process_text` → `send_voice_reply`:
 1. Teks balasan selalu dikirim lebih dulu (`reply_text`).
-2. Jika `tts.is_tts_available()`, pilih suara dari database (`database.get_telegram_voice`), default `id-ID-GadisNeural`.
-3. `tts.text_to_speech(...)` menghasilkan MP3.
+2. Jika `tts.is_tts_available()`, pilih suara dari database (`database.get_telegram_voice`); nilai lama `id-ID-GadisNeural` / `id-ID-ArdiNeural` dipetakan ke suara perempuan / laki-laki.
+3. `tts.text_to_speech(...)` mencoba ElevenLabs lebih dulu (bila `ELEVENLABS_API_KEY` dan voice ID untuk pilihan itu tersedia), lalu Edge TTS, lalu gTTS. Hasilnya MP3.
 4. `tts.create_voice_file` menulis file sementara, lalu `bot.send_voice` mengirimnya.
 5. File sementara dihapus di blok `finally`.
 
 **WhatsApp** — `handle_chat` → `_send_voice_reply`:
 1. Teks dikirim lebih dulu.
-2. TTS dijalankan lewat `asyncio.run` karena handler Neonize sinkron.
+2. TTS dijalankan lewat `asyncio.run` karena handler Neonize sinkron. WhatsApp memakai suara perempuan, yang berarti voice ID `ELEVENLABS_VOICE_ID_FEMALE` bila ElevenLabs aktif.
 3. `_voice_note_audio` mengubah MP3 menjadi **Ogg Opus** dengan ffmpeg dari `imageio-ffmpeg` dan menghitung durasi dari granule position.
 4. Audio diunggah (`client.upload`) lalu dikirim sebagai `AudioMessage` dengan `PTT=True`, `mimetype="audio/ogg; codecs=opus"`.
 5. Semua kegagalan hanya dicatat di log; balasan teks tetap sampai ke pengguna.
@@ -80,7 +80,8 @@ Kegagalan transkripsi ditangkap di masing-masing handler dan dijawab dengan pesa
 - **Groq wajib untuk STT.** Tanpa `GROQ_API_KEY`, transkripsi melempar error; tangkap dan beri pesan ramah. Batas gratis sekitar 2.000 request/hari.
 - **Hanya voice note (PTT).** Di WhatsApp, rekaman audio biasa bukan voice note dan akan ditolak. Di Telegram, handler hanya terpasang untuk `filters.VOICE`.
 - **Batas 2 menit.** Diterapkan di kedua platform sebelum unduh/transkripsi.
-- **Edge TTS tidak resmi.** Layanan daring Microsoft ini bisa berubah atau gagal; gTTS adalah cadangan dan tidak bisa memilih suara. Keduanya butuh internet.
+- **ElevenLabs butuh API key dan voice ID.** `ELEVENLABS_API_KEY` serta voice ID pria/wanita dibaca dari environment; `ELEVENLABS_MODEL_ID` opsional dengan default `eleven_multilingual_v2`. Jangan pernah menaruh key di kode atau log; bila panggilan gagal, `tts.py` mencatat peringatan tanpa isi respons dan lanjut ke Edge TTS.
+- **Edge TTS tidak resmi.** Layanan daring Microsoft ini dipakai sebagai cadangan bila ElevenLabs belum diisi atau gagal. gTTS adalah cadangan terakhir dan tidak bisa memilih suara. Semuanya butuh internet.
 - **Jangan menunggu TTS tanpa batas.** `stt.py` memakai timeout 60 detik; konversi ffmpeg WhatsApp memakai timeout 60 detik. Pertahankan timeout saat menambah panggilan jaringan.
 - **Jangan log token atau API key.** Telegram sudah memasang formatter yang meredaksi `TELEGRAM_BOT_TOKEN`; ikuti pola itu untuk secret baru.
 - **Filesystem Render tidak persisten.** `wa_session.db` bisa hilang saat redeploy di free tier, sehingga perlu scan ulang. Riwayat belajar sebaiknya di `DATABASE_URL` (Postgres/Neon).
@@ -88,15 +89,15 @@ Kegagalan transkripsi ditangkap di masing-masing handler dan dijawab dengan pesa
 
 ## Menambah Pilihan Suara Telegram
 
-1. Tambahkan nama dan voice Edge TTS ke `VOICE_CHOICES` di `telegram_bot.py`.
-2. Tidak perlu migrasi database — pilihan disimpan sebagai string di `telegram_voice_preferences`.
-3. Pastikan voice tersebut benar-benar tersedia di Edge TTS; gTTS akan mengabaikan pilihan suara.
-4. Perbarui `/suara` dan `/help` bila format perintah berubah.
+1. Tambahkan kunci pilihan ke `VOICE_CHOICES` di `telegram_bot.py`. Nilainya tetap nama Edge TTS agar preferensi lama di database tidak perlu migrasi.
+2. Petakan kunci itu ke voice ID ElevenLabs di `EDGE_VOICES` / `_elevenlabs_voice_id` pada `tts.py`, dan sediakan variabel environment untuk voice ID barunya.
+3. Tanpa voice ID ElevenLabs, pilihan tersebut otomatis memakai suara Edge TTS-nya; gTTS mengabaikan pilihan suara.
+4. Perbarui `/suara`, `/help`, dan `.env.example` bila format perintah atau variabel berubah.
 
 ## Checklist Sebelum Mengirim Perubahan
 
 - [ ] `python3 test_whatsapp_bot.py` lulus (64 skenario, 103 pemeriksaan).
-- [ ] `python3 test_telegram_voice.py` lulus (6 unit test).
+- [ ] `python3 test_telegram_voice.py` lulus (8 unit test).
 - [ ] `python3 test_telegram_bot.py` lulus (37 unit test handler & perintah).
 - [ ] Workflow GitHub Actions `Tests` lulus untuk push terakhir.
 - [ ] Perubahan mode suara ditangani di kedua platform, atau keterbatasannya didokumentasikan.

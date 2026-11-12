@@ -1,13 +1,13 @@
 # 🌟 Ayo, Moana Belajar! - Telegram & WhatsApp AI Tutor
 
-![Version](https://img.shields.io/badge/version-v1.5.0-blue.svg)
+![Version](https://img.shields.io/badge/version-v1.5.1-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.14-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Telegram%20%26%20WhatsApp-success.svg)
 ![Tests](https://github.com/Faber-Aritonang/ayomoanabelajar-bot/actions/workflows/tests.yml/badge.svg)
 
 Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih mata pelajaran, bertanya lewat teks atau voice note, lalu berlatih dengan kuis adaptif. Tersedia di **Telegram** dan **WhatsApp** — keduanya berbagi materi, prompt guru, dan database riwayat belajar yang sama.
 
-## ✨ Fitur Utama (v1.5.0)
+## ✨ Fitur Utama (v1.5.1)
 
 - 🤖 **AI Chat Tutor**: Pendamping belajar dengan prompt khusus per mata pelajaran, dibimbing langkah demi langkah (bukan langsung memberi jawaban PR).
 - 🖼️ **Knowledge Base Gambar & PDF**: tangkapan layar di `materials/images/<pelajaran>/` dan PDF di `materials/pdf/<pelajaran>/` ikut dibaca Claude sebagai rujukan visual, bukan hanya teks.
@@ -16,9 +16,9 @@ Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih
 - ⭐ **Gamifikasi Bintang**: `/bintang` (Telegram) atau `bintang` (WhatsApp) menampilkan koleksi bintang — 1 bintang untuk setiap 5 interaksi belajar.
 - 🔥 **Streak Belajar Harian**: Hari belajar berturut-turut dihitung dari riwayat database dan ditampilkan lewat `/streak` / `streak`.
 - 🎤 **Mode Suara (dua arah)**: Voice note ditranskripsi otomatis dengan **Groq Whisper** (Bahasa Indonesia, maksimal 2 menit), lalu dijawab seperti pesan teks. Balasan percakapan juga dikirim sebagai voice note.
-  - Telegram: pilih suara lewat `/suara`, `/suara perempuan` (`id-ID-GadisNeural`), atau `/suara laki-laki` (`id-ID-ArdiNeural`). Pilihan disimpan per pengguna di database.
-  - WhatsApp: suara tetap perempuan `id-ID-GadisNeural`; pilihan suara belum tersedia.
-  - TTS memakai **Edge TTS** tanpa API key, dengan **gTTS** sebagai cadangan. Keduanya butuh internet; jika audio gagal, balasan teks tetap dikirim.
+  - Telegram: pilih suara lewat `/suara`, `/suara perempuan`, atau `/suara laki-laki`. Pilihan disimpan per pengguna di database.
+  - WhatsApp: balasan suara memakai suara perempuan; pilihan suara belum tersedia.
+  - TTS memakai **ElevenLabs** untuk suara pria dan wanita bila `ELEVENLABS_API_KEY` serta voice ID pria/wanita diisi; model bisa diatur lewat `ELEVENLABS_MODEL_ID` (default `eleven_multilingual_v2`). Bila belum diisi atau panggilan gagal, bot memakai **Edge TTS** dengan **gTTS** sebagai cadangan. Semua butuh internet; jika audio gagal, balasan teks tetap dikirim.
   - Notasi matematika umum (pecahan, akar, pangkat, operasi hitung, kurung) dibacakan dengan kata-kata khusus untuk suara. Teks balasan tidak diubah.
 - 📊 **Laporan Kemajuan**: `/laporan` / `laporan` menampilkan jumlah interaksi per pelajaran dan rekap skor kuis untuk orang tua.
 - 📑 **Rapor AI Naratif**: `/rapor` / `rapor` menganalisis 20 interaksi terakhir lintas pelajaran dan menyusun evaluasi untuk orang tua.
@@ -109,7 +109,7 @@ Nonaktif secara default (semua orang bisa memakai bot). Untuk mengaktifkan:
 - **Framework WhatsApp**: `Neonize` (wrapper Python untuk `whatsmeow`)
 - **AI**: Anthropic Claude Haiku 4.5
 - **STT**: Groq Whisper (`whisper-large-v3-turbo`)
-- **TTS**: Edge TTS + gTTS
+- **TTS**: ElevenLabs (opsional) + Edge TTS + gTTS
 - **Infrastruktur**: Render (Blueprint tersedia di `render.yaml`)
 
 ## 📁 Struktur Berkas
@@ -163,6 +163,9 @@ Login pertama kali: scan QR dari `http://localhost:10000/qr` (atau buka dari HP 
 | `TELEGRAM_BOT_TOKEN` | Telegram | Token dari @BotFather |
 | `ANTHROPIC_API_KEY` | Ya | Kunci API Claude |
 | `GROQ_API_KEY` | Mode suara | Transkripsi voice note (gratis di console.groq.com) |
+| `ELEVENLABS_API_KEY` | Opsional | Mengaktifkan suara ElevenLabs; wajib bila memakai ElevenLabs |
+| `ELEVENLABS_VOICE_ID_MALE`, `ELEVENLABS_VOICE_ID_FEMALE` | Opsional | Voice ID suara pria dan wanita dari elevenlabs.io |
+| `ELEVENLABS_MODEL_ID` | Opsional | Model ElevenLabs; default `eleven_multilingual_v2` |
 | `DATABASE_URL` | Disarankan | Postgres/Neon; tanpa ini memakai `chatbot.db` SQLite lokal |
 | `RENDER_EXTERNAL_URL` | Render | Diisi otomatis; dipakai webhook Telegram dan keep-alive WhatsApp |
 | `PORT` | Render | Diisi otomatis; HTTP server WhatsApp & health check |
@@ -190,7 +193,7 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 
 ```bash
 python3 test_whatsapp_bot.py      # 64 skenario, 103 pemeriksaan
-python3 test_telegram_voice.py    # 6 unit test suara & database
+python3 test_telegram_voice.py    # 8 unit test suara & database
 python3 test_telegram_bot.py      # 37 unit test handler & perintah
 ```
 
@@ -288,6 +291,8 @@ Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semu
 
 ## 📝 Changelog
 
+- **[v1.5.1]**
+  - **Suara ElevenLabs**: pilihan suara pria dan wanita kini memakai voice ID ElevenLabs dari environment, dengan model yang bisa diatur lewat `ELEVENLABS_MODEL_ID`. Bila konfigurasi kosong atau panggilan gagal, bot otomatis kembali ke Edge TTS, lalu gTTS.
 - **[v1.5.0]**
   - **Ayo Sain Olimpiade**: menu sains berisi 8 sub-menu, masing-masing dengan prompt tutor dan kuis sendiri. Menu ini bisa dibuka dari `/start`, `/menu`, atau tombol langsung di dasbor Telegram, serta lewat angka `7` di WhatsApp.
   - **Materi visual**: Claude membaca tangkapan layar di `materials/images/<pelajaran>/` dan PDF di `materials/pdf/<pelajaran>/`, dengan kompresi otomatis untuk gambar besar dan cache agar materi tidak diproses ulang di setiap pesan.

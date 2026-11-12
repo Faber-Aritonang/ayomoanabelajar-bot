@@ -141,10 +141,41 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("offline")
                 yield
 
-        with patch.object(tts, "edge_tts", SimpleNamespace(Communicate=FailedEdge)), \
+        with patch.dict(os.environ, {"ELEVENLABS_API_KEY": ""}), \
+             patch.object(tts, "edge_tts", SimpleNamespace(Communicate=FailedEdge)), \
              patch.object(tts, "_gtts_audio", return_value=b"audio") as fallback:
             self.assertEqual(await tts.text_to_speech("2 + 3 = 5"), b"audio")
             fallback.assert_called_once_with("2 tambah 3 sama dengan 5", "id")
+
+    async def test_elevenlabs_replaces_edge_voice_when_configured(self):
+        env = {
+            "ELEVENLABS_API_KEY": "test-key",
+            "ELEVENLABS_VOICE_ID_FEMALE": "female-voice",
+            "ELEVENLABS_VOICE_ID_MALE": "male-voice",
+            "ELEVENLABS_MODEL_ID": "eleven_turbo_v2_5",
+        }
+        with patch.dict(os.environ, env), \
+             patch.object(tts, "_elevenlabs_audio", AsyncMock(return_value=b"eleven")) as speech, \
+             patch.object(tts, "edge_tts", SimpleNamespace(Communicate=AsyncMock())) as edge:
+            self.assertEqual(await tts.text_to_speech("Halo", voice="id-ID-ArdiNeural"), b"eleven")
+        speech.assert_awaited_once_with("Halo", "male-voice", "test-key", "eleven_turbo_v2_5")
+        edge.Communicate.assert_not_called()
+
+    async def test_elevenlabs_failure_falls_back_to_edge(self):
+        used_voices = []
+
+        class WorkingEdge:
+            def __init__(self, text, voice):
+                used_voices.append(voice)
+            async def stream(self):
+                yield {"type": "audio", "data": b"edge"}
+
+        env = {"ELEVENLABS_API_KEY": "test-key", "ELEVENLABS_VOICE_ID_FEMALE": "female-voice"}
+        with patch.dict(os.environ, env), \
+             patch.object(tts, "_elevenlabs_audio", AsyncMock(side_effect=RuntimeError("offline"))), \
+             patch.object(tts, "edge_tts", SimpleNamespace(Communicate=WorkingEdge)):
+            self.assertEqual(await tts.text_to_speech("Halo", voice="id-ID-GadisNeural"), b"edge")
+        self.assertEqual(used_voices, ["id-ID-GadisNeural"])
 
 
 if __name__ == "__main__":

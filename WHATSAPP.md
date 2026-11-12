@@ -78,10 +78,12 @@ mikrofon) — audio ditranskripsi via **Groq Whisper** (gratis, Bahasa
 Indonesia) lalu diproses seperti pesan teks biasa. Anak juga diberi tahu
 teks yang tertangkap agar bisa mengoreksi kalau transkripsinya keliru.
 Jawaban percakapan dikirim sebagai teks dan voice note, baik pertanyaan
-berupa teks maupun voice note. Voice note memakai Edge TTS suara perempuan
-Indonesia `id-ID-GadisNeural`, dengan gTTS sebagai cadangan. Jika suara gagal,
-balasan teks tetap tersedia. Pilihan suara belum tersedia di WhatsApp.
-Edge TTS adalah layanan daring tidak resmi; kedua TTS memerlukan internet.
+berupa teks maupun voice note. Voice note memakai suara perempuan: ElevenLabs
+bila `ELEVENLABS_API_KEY` dan `ELEVENLABS_VOICE_ID_FEMALE` diisi, atau Edge TTS
+`id-ID-GadisNeural` sebagai cadangan, lalu gTTS. Jika suara gagal, balasan teks
+tetap tersedia. Pilihan suara belum tersedia di WhatsApp.
+ElevenLabs memerlukan API key; Edge TTS adalah layanan daring tidak resmi.
+Semua TTS memerlukan internet.
 
 - Wajib punya `GROQ_API_KEY` di `.env` / env vars Render (lihat `.env.example`).
 - `imageio-ffmpeg` (terpasang lewat `requirements.txt`) diperlukan untuk mengubah audio ke format Ogg Opus voice note.
@@ -138,6 +140,7 @@ Cek status: buka `http://localhost:10000/status` di browser.
 5. **Env vars** (dari dashboard Render):
    - `ANTHROPIC_API_KEY` (wajib, untuk AI)
    - `GROQ_API_KEY` (wajib untuk mode suara; gratis dari console.groq.com)
+   - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID_FEMALE`, `ELEVENLABS_MODEL_ID` (opsional, untuk suara perempuan dari ElevenLabs)
    - `REMINDER_HOUR=9` (jam pengingat belajar, UTC — 16:00 WIB; opsional)
    - `BOT_WHITELIST_ENABLED=1` + `BOT_ADMIN_WHATSAPP=<nomormu>` (opsional,
      kalau mau batasi siapa yang bisa memakai bot)

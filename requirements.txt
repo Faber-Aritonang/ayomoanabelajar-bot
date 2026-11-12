@@ -35,4 +35,4 @@ segno==1.6.6
 tqdm==4.70.0
 
 # --- Text-to-Speech ---
-# Edge TTS (utama) + gTTS (fallback gratis)
+# ElevenLabs (opsional, lewat httpx) + Edge TTS + gTTS (cadangan gratis)

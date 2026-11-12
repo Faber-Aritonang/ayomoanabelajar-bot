@@ -1,13 +1,13 @@
 # 🌟 Ayo, Moana Belajar! - Telegram & WhatsApp AI Tutor
 
-![Version](https://img.shields.io/badge/version-v1.4.6-blue.svg)
+![Version](https://img.shields.io/badge/version-v1.5.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.14-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Telegram%20%26%20WhatsApp-success.svg)
 ![Tests](https://github.com/Faber-Aritonang/ayomoanabelajar-bot/actions/workflows/tests.yml/badge.svg)
 
 Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih mata pelajaran, bertanya lewat teks atau voice note, lalu berlatih dengan kuis adaptif. Tersedia di **Telegram** dan **WhatsApp** — keduanya berbagi materi, prompt guru, dan database riwayat belajar yang sama.
 
-## ✨ Fitur Utama (v1.4.6)
+## ✨ Fitur Utama (v1.5.0)
 
 - 🤖 **AI Chat Tutor**: Pendamping belajar dengan prompt khusus per mata pelajaran, dibimbing langkah demi langkah (bukan langsung memberi jawaban PR).
 - 🖼️ **Knowledge Base Gambar & PDF**: tangkapan layar di `materials/images/<pelajaran>/` dan PDF di `materials/pdf/<pelajaran>/` ikut dibaca Claude sebagai rujukan visual, bukan hanya teks.
@@ -58,7 +58,8 @@ PDF hasil scan juga didukung: letakkan di `materials/pdf/<pelajaran>/` (maksimal
 | `/streak` | Lihat streak belajar harian 🔥 |
 | `/laporan` | Rekap keaktifan dan skor kuis (orang tua) |
 | `/rapor` | Rapor evaluasi AI (orang tua) |
-| `/suara perempuan` / `/suara laki-laki` | Pilih suara balasan |
+| `/suara` | Buka pilihan suara lewat tombol |
+| `/suara perempuan` / `/suara laki-laki` | Pilih suara balasan langsung |
 | `/reset` | Mulai obrolan baru (riwayat tetap tersimpan) |
 | `/help` | Bantuan |
 | `/tambah`, `/hapus`, `/daftar` | *(Admin)* Kelola whitelist |
@@ -129,6 +130,8 @@ Nonaktif secara default (semua orang bisa memakai bot). Untuk mengaktifkan:
 | `test_telegram_voice.py` | Unit test suara, database, dan log Telegram |
 | `test_telegram_bot.py` | Unit test handler dan perintah Telegram |
 | `CONTRIBUTING.md` | Panduan kontributor dan pola implementasi mode suara |
+| `ABOUT.md` | Ringkasan tujuan dan pendekatan belajar proyek |
+| `render.yaml` | Blueprint Render untuk service Telegram dan WhatsApp |
 | `.github/workflows/tests.yml` | CI: menjalankan semua tes pada setiap push |
 
 ## 🚀 Menjalankan Lokal
@@ -285,6 +288,10 @@ Bagian ini berisi usulan pengembangan dan perbaikan untuk rilis berikutnya. Semu
 
 ## 📝 Changelog
 
+- **[v1.5.0]**
+  - **Ayo Sain Olimpiade**: menu sains berisi 8 sub-menu, masing-masing dengan prompt tutor dan kuis sendiri. Menu ini bisa dibuka dari `/start`, `/menu`, atau tombol langsung di dasbor Telegram, serta lewat angka `7` di WhatsApp.
+  - **Materi visual**: Claude membaca tangkapan layar di `materials/images/<pelajaran>/` dan PDF di `materials/pdf/<pelajaran>/`, dengan kompresi otomatis untuk gambar besar dan cache agar materi tidak diproses ulang di setiap pesan.
+  - **Kuis lebih interaktif**: jawaban bisa diklik lewat tombol A–D di Telegram, jawaban yang menyebut lebih dari satu pilihan ditolak, dan setiap jawaban disertai penjelasan singkat.
 - **[v1.4.6]**
   - **Database permanen (Neon Postgres)**: `DATABASE_URL` dipakai kedua bot, sehingga riwayat chat, streak, bintang, dan skor kuis tidak hilang saat redeploy.
   - **Dukungan Python 3.14**: driver diganti ke `psycopg[binary]` v3; `database.py` otomatis memakai `postgresql+psycopg://`.

@@ -10,6 +10,7 @@ Bot edukatif berbasis AI untuk mendampingi belajar anak SD kelas 3. Anak memilih
 ## ✨ Fitur Utama (v1.4.6)
 
 - 🤖 **AI Chat Tutor**: Pendamping belajar dengan prompt khusus per mata pelajaran, dibimbing langkah demi langkah (bukan langsung memberi jawaban PR).
+- 🖼️ **Knowledge Base Gambar & PDF**: tangkapan layar di `materials/images/<pelajaran>/` dan PDF di `materials/pdf/<pelajaran>/` ikut dibaca Claude sebagai rujukan visual, bukan hanya teks.
 - 🔬 **Ayo Sain Olimpiade**: Menu sains dengan **8 sub-menu** — Zoologi, Botani, Tubuh Manusia, Fisika, Astronomi/Bumi dan Antariksa, Ekologi, Mengungkap Rahasia, dan Eksperimen. Setiap sub-menu punya prompt tutor dan alur belajar sendiri.
 - 📈 **Kuis Adaptif Berpoin**: 5 soal pilihan ganda per sesi. Tingkat kesulitan menyesuaikan riwayat obrolan; jawaban benar **+10 poin**, salah **0 poin**. Kunci jawaban tidak pernah ditampilkan ke anak, dan skor tersimpan di database. Di Telegram, jawaban bisa diketik atau diklik lewat tombol **A–D**; jawaban yang menyebut lebih dari satu pilihan ditolak dan anak diminta memilih satu. Setelah dijawab, bot menampilkan penjelasan singkat mengapa jawaban itu benar atau salah.
 - ⭐ **Gamifikasi Bintang**: `/bintang` (Telegram) atau `bintang` (WhatsApp) menampilkan koleksi bintang — 1 bintang untuk setiap 5 interaksi belajar.
@@ -42,7 +43,9 @@ Di dalam menu **🔬 Ayo Sain Olimpiade** tersedia 8 sub-menu:
 | 🔍 Mengungkap Rahasia | Fakta unik, sejarah penemuan, dan mitos yang diuji dengan bukti. |
 | 🧪 Eksperimen | Percobaan sains sederhana yang aman dengan dampingan orang dewasa. |
 
-Materi buku cetak opsional dibaca dari `materials/<pelajaran>.md` (lokal) atau `/etc/secrets/<pelajaran>.md` (Render Secret Files); file materi tidak ikut di-commit karena alasan hak cipta.
+Materi cetak opsional dibaca dari `materials/<pelajaran>.md` (lokal) atau `/etc/secrets/<pelajaran>.md` (Render Secret Files). Untuk materi berupa tangkapan layar, simpan gambar di `materials/images/<pelajaran>/` — format `.png`, `.jpg`, `.jpeg`, `.webp`, atau `.gif`, maksimal 8 gambar, diurutkan berdasarkan nama file. Screenshot besar otomatis dikompres: diperkecil ke maksimal **1568 px sisi terpanjang / ~1,15 MP**, diubah ke JPEG kualitas 85, dan metadata EXIF dibuang — teks tetap tajam dan tiap gambar dibatasi sekitar **1.500 token** (token gambar dihitung dari piksel).
+
+PDF hasil scan juga didukung: letakkan di `materials/pdf/<pelajaran>/` (maksimal 2 PDF, ~8 MB per file). Claude membaca tiap halaman PDF sebagai teks + gambar, jadi PDF berisi tangkapan layar buku tetap terbaca. Batas API adalah 100 halaman per request dan tiap halaman memakai sekitar 1.500–3.000 token, jadi gunakan PDF ringkas per topik. Di Render, Secret Files bersifat datar: beri nama `<pelajaran>__01.png` dan `<pelajaran>__materi.pdf` di `/etc/secrets/`. File materi, gambar, dan PDF tidak ikut di-commit karena alasan hak cipta.
 
 ## 💬 Perintah Telegram
 
@@ -69,7 +72,7 @@ WhatsApp tidak punya tombol inline, jadi semua perintah diketik.
 
 | Perintah | Fungsi |
 |---|---|
-| `menu` / `mulai` / `ganti` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
+| `menu` / `mulai` / `ganti` | Daftar pelajaran — ketik angkanya (1–7) untuk memilih |
 | `1` … `7` | Pilih pelajaran; `7` membuka sub-menu Ayo Sain Olimpiade |
 | `1` … `8` | Pilih sub-menu setelah Ayo Sain Olimpiade dibuka |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |
@@ -183,9 +186,9 @@ Catatan free tier: filesystem tidak persisten, sehingga `wa_session.db` bisa hil
 ## 🧪 Tes Offline
 
 ```bash
-python3 test_whatsapp_bot.py      # 61 skenario, 99 pemeriksaan
+python3 test_whatsapp_bot.py      # 64 skenario, 103 pemeriksaan
 python3 test_telegram_voice.py    # 6 unit test suara & database
-python3 test_telegram_bot.py      # 32 unit test handler & perintah
+python3 test_telegram_bot.py      # 37 unit test handler & perintah
 ```
 
 `test_whatsapp_bot.py` menyimulasikan pesan masuk (menu, pilih pelajaran, chat, kuis benar/salah, bintang, streak, laporan, rapor, voice note, whitelist, QR/pairing, pengingat) tanpa koneksi WhatsApp atau biaya API. `test_telegram_bot.py` menguji handler dan perintah Telegram dengan mock untuk AI/Telegram/Groq. Semua tes memakai database terpisah dan tidak menyentuh data asli; tes Telegram juga tidak memanggil API berbayar.

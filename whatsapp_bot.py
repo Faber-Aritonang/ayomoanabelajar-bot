@@ -126,14 +126,20 @@ def _subject_menu_text() -> str:
     lines = [f"🎓 *{BOT_NAME}* 🎓", "", "Halo, Adik! 👋 Aku Kak Moana, teman belajar kelas 3 SD. 😊", ""]
     lines.append("Ketik *angka* di bawah ini untuk memilih pelajaran:")
     lines.append("")
+    group_no = group_name = None
     for i, (key, data) in enumerate(list_subjects(), start=1):
         if get_group(key):
+            group_no, group_name = i, data["name"]
             jumlah = len(list_subjects(key))
             lines.append(f"{i}. {data['emoji']} {data['name']} — {jumlah} sub-menu")
         else:
             lines.append(f"{i}. {data['emoji']} {data['name']}")
     lines.append("")
     lines.append("Contoh: ketik *1* untuk Matematika.")
+    if group_no:
+        lines.append(
+            f"Ketik *{group_no}* untuk membuka *{group_name}* dan memilih sub-menunya."
+        )
     lines.append("Atau ketik *menu* kapan saja untuk kembali ke sini.")
     return "\n".join(lines)
 
@@ -143,13 +149,17 @@ def _group_menu_text(group_key: str) -> str:
     group = get_group(group_key)
     if not group:
         return _subject_menu_text()
+    children = list_subjects(group_key)
     lines = [f"{group['emoji']} *{group['name']}* {group['emoji']}", "", group["description"], ""]
-    lines.append("Ketik *angka* untuk memilih sub-menu:")
+    lines.append(f"Ada {len(children)} sub-menu. Ketik *angka* di bawah ini untuk memilih:")
     lines.append("")
-    for i, (key, data) in enumerate(list_subjects(group_key), start=1):
+    for i, (key, data) in enumerate(children, start=1):
         lines.append(f"{i}. {data['emoji']} {data['name']}")
     lines.append("")
-    lines.append("Ketik *menu* untuk kembali ke daftar pelajaran.")
+    lines.append(
+        "Setiap sub-menu punya tutor dan kuis sendiri. "
+        "Ketik *menu* untuk kembali ke daftar pelajaran."
+    )
     return "\n".join(lines)
 
 
@@ -187,7 +197,9 @@ def parse_command(text: str, subject_active: bool = False, group_key: str | None
     # aktif — supaya jawaban kuis berupa angka tidak ikut mengubah pelajaran.
     if not subject_active and t.isdigit():
         n = int(t)
-        if 1 <= n <= len(list_subjects(group_key)):
+        # Saat sub-menu terbuka, angka apa pun ditangani pemilih sub-menu agar
+        # anak mendapat pesan "pilih 1–8" dan tidak terlempar dari daftar.
+        if group_key or 1 <= n <= len(list_subjects()):
             return ("pilih_subject", n)
 
     return ("chat", text)
@@ -268,7 +280,15 @@ def handle_pick_subject(client, ev, phone, number):
     group_key = st.get("pending_group")
     subjects = list_subjects(group_key)
     if not (1 <= number <= len(subjects)):
-        _send(client, ev, "Pilihan itu tidak tersedia. Ketik *menu* untuk melihat daftar ya.")
+        if group_key:
+            _send(
+                client,
+                ev,
+                f"Pilih angka 1 sampai {len(subjects)} ya, Adik. "
+                "Ketik *menu* kalau mau kembali ke daftar pelajaran.",
+            )
+        else:
+            _send(client, ev, "Pilihan itu tidak tersedia. Ketik *menu* untuk melihat daftar ya.")
         return
 
     key, data = subjects[number - 1]
@@ -289,8 +309,8 @@ def handle_pick_subject(client, ev, phone, number):
         client,
         ev,
         f"{data['emoji']} Oke! Sekarang kita belajar *{data['name']}* ya.\n"
-        "Langsung tanya apa saja seputar pelajaran ini, atau ketik *kuis* "
-        "untuk latihan soal!",
+        "Langsung ketik pertanyaanmu, atau ketik *kuis* untuk latihan soal. "
+        "Ketik *menu* kalau mau ganti pelajaran.",
     )
 
 

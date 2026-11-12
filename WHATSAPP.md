@@ -20,7 +20,7 @@ WhatsApp tidak punya tombol inline keyboard, jadi semua perintah diketik:
 
 | Perintah | Fungsi |
 |---|---|
-| `menu` atau `mulai` | Daftar pelajaran — ketik angkanya (1–6) untuk memilih |
+| `menu` atau `mulai` | Daftar pelajaran — ketik angkanya (1–7) untuk memilih |
 | `1` … `7` | Pilih pelajaran; `7` membuka 8 sub-menu Ayo Sain Olimpiade |
 | `1` … `8` | Pilih sub-menu setelah Ayo Sain Olimpiade dibuka |
 | *(teks bebas)* | Chat/bertanya ke Kak Moana |

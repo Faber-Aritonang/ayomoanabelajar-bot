@@ -35,7 +35,7 @@ import stt
 import tts
 import whitelist
 from llm import get_ai_reply
-from subjects import get_group, get_subject, list_subjects
+from subjects import get_group, group_of, get_subject, list_subjects
 
 load_dotenv()
 
@@ -102,7 +102,11 @@ def build_subject_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for key, data in list_subjects():
         label = f"{data['emoji']} {data['name']}"
-        prefix = "group" if get_group(key) else "subject"
+        if get_group(key):
+            label += f" ({len(list_subjects(key))} sub-menu)"
+            prefix = "group"
+        else:
+            prefix = "subject"
         buttons.append([InlineKeyboardButton(label, callback_data=f"{prefix}:{key}")])
     return InlineKeyboardMarkup(buttons)
 
@@ -368,10 +372,12 @@ async def group_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Grup pelajaran itu tidak ditemukan.", show_alert=True)
         return
 
+    jumlah = len(list_subjects(group_key))
     await query.answer()
     await query.edit_message_text(
         f"{group['emoji']} *{group['name']}*\n\n{group['description']}\n\n"
-        "Pilih salah satu sub-menu di bawah ini:",
+        f"Ada {jumlah} sub-menu. Pilih satu di bawah ini ya — setiap sub-menu "
+        "punya Kak Moana sendiri untuk tanya jawab dan kuis.",
         parse_mode="Markdown",
         reply_markup=build_group_keyboard(group_key),
     )
@@ -386,7 +392,7 @@ async def main_menu_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await query.answer()
     await query.edit_message_text(
-        "Halo, Adik! 👋 Pilih dulu mau belajar apa hari ini:",
+        "Halo, Adik! 👋 Mau belajar apa hari ini? Pilih satu pelajaran di bawah ya:",
         reply_markup=build_subject_keyboard(),
     )
 
@@ -410,10 +416,21 @@ async def subject_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["reset_marker"] = True  # mulai konteks segar tiap ganti pelajaran
     context.user_data.pop("quiz", None)  # pelajaran baru = kuis baru
 
+    # Sub-menu diberi jalan kembali ke daftar 8 sub-menu, bukan hanya /menu.
+    group_key = group_of(subject_key)
+    buttons = []
+    if group_key:
+        group = get_group(group_key)
+        buttons.append([InlineKeyboardButton(
+            f"⬅️ Kembali ke {group['name']}", callback_data=f"group:{group_key}"
+        )])
+        buttons.append([InlineKeyboardButton("🗂️ Menu utama", callback_data="menu:main")])
+
     await query.edit_message_text(
         f"{subject['emoji']} Oke! Sekarang kita belajar *{subject['name']}* ya.\n"
-        "Langsung tanya apa saja seputar pelajaran ini, atau minta Kak Moana kasih soal latihan!",
+        "Langsung tanya apa saja, atau ketik /kuis untuk latihan soal!",
         parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
     )
 
 
@@ -847,6 +864,7 @@ async def menu_command(update, context):
     pesan += "Ketik salah satu perintah di atas kapan saja ya!"
     
     rows = [list(row) for row in build_voice_keyboard().inline_keyboard]
+    rows.append([InlineKeyboardButton("🔬 Ayo Sain Olimpiade", callback_data="group:sain_olimpiade")])
     rows.append([InlineKeyboardButton("🗂️ Pilih pelajaran", callback_data="menu:main")])
     await update.message.reply_markdown(pesan, reply_markup=InlineKeyboardMarkup(rows))
 

@@ -11,6 +11,12 @@ __pycache__/
 materials/*.md
 !materials/.gitkeep
 
+# Gambar materi (tangkapan layar buku) juga tidak di-commit.
+materials/images/*
+!materials/images/.gitkeep
+materials/pdf/*
+!materials/pdf/.gitkeep
+
 # File besar / sementara yang tidak perlu masuk repo.
 *.AppImage
 *.zip

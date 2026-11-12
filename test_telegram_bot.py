@@ -7,6 +7,7 @@ Cara jalankan:
     python3 test_telegram_bot.py
 """
 
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,6 +103,7 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(buttons), 7)
         self.assertIn("Matematika", buttons[0].text)
         self.assertIn("Ayo Sain Olimpiade", buttons[-1].text)
+        self.assertIn("8 sub-menu", buttons[-1].text)
         self.assertEqual(buttons[-1].callback_data, "group:sain_olimpiade")
 
     async def test_help_dan_menu_menampilkan_perintah_utama(self):
@@ -116,7 +118,11 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(command, menu)
         markup = self.message.reply_markdown.await_args.kwargs["reply_markup"]
         callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
-        self.assertEqual(callbacks, ["voice:perempuan", "voice:laki-laki", "menu:main"])
+        self.assertEqual(
+            callbacks,
+            ["voice:perempuan", "voice:laki-laki", "group:sain_olimpiade", "menu:main"],
+        )
+        self.assertEqual(markup.inline_keyboard[1][0].text, "🔬 Ayo Sain Olimpiade")
 
     async def test_suara_valid_disimpan_dan_pilihan_tidak_dikenal_ditolak(self):
         self.context.args = ["robot"]
@@ -179,6 +185,12 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
             await telegram_bot.subject_chosen(self.update, self.context)
         self.assertEqual(self.context.user_data["subject"], "zoologi")
         self.assertIn("Zoologi", query.edit_message_text.await_args.args[0])
+        markup = query.edit_message_text.await_args.kwargs["reply_markup"]
+        tombol = [button for row in markup.inline_keyboard for button in row]
+        self.assertEqual(
+            [button.callback_data for button in tombol],
+            ["group:sain_olimpiade", "menu:main"],
+        )
 
     # --- Kuis -----------------------------------------------------------
 
@@ -701,6 +713,121 @@ class TelegramHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.context.bot.send_message.assert_awaited_once_with(
             chat_id=123, text="Pengingat"
         )
+
+
+class LLMImageMaterialTests(unittest.TestCase):
+    """Knowledge base gambar: pemuatan file dan blok image ke Anthropic API."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(dir=".")
+        self.addCleanup(self.temp_dir.cleanup)
+        self.materials = Path(self.temp_dir.name)
+        for name, value in (
+            ("MATERIALS_DIR", self.materials),
+            ("SECRETS_DIR", self.materials / "secrets"),
+        ):
+            patcher = patch.object(llm, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        self.image_dir = self.materials / "images" / "zoologi"
+        self.image_dir.mkdir(parents=True)
+        self.request = None
+        self.client = SimpleNamespace(messages=SimpleNamespace(create=self.fake_create))
+
+    def fake_create(self, **kwargs):
+        self.request = kwargs
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text="Jawaban uji")])
+
+    def test_memuat_gambar_urut_dan_melewati_file_tidak_sesuai(self):
+        (self.image_dir / "02.png").write_bytes(b"png-2")
+        (self.image_dir / "01.jpg").write_bytes(b"jpg-1")
+        (self.image_dir / "catatan.txt").write_text("bukan gambar")
+        (self.image_dir / "besar.png").write_bytes(
+            b"x" * (llm.MAX_MATERIAL_IMAGE_BYTES + 1)
+        )
+
+        blocks = llm._load_material_images("zoologi")
+
+        self.assertEqual(
+            [b["source"]["media_type"] for b in blocks],
+            ["image/jpeg", "image/png"],
+        )
+        self.assertEqual(
+            [base64.b64decode(b["source"]["data"]) for b in blocks],
+            [b"jpg-1", b"png-2"],
+        )
+
+    def test_permintaan_ai_mengirim_gambar_di_awal_dengan_cache(self):
+        (self.image_dir / "01.png").write_bytes(b"png-1")
+
+        with patch.object(llm, "_get_client", return_value=self.client):
+            reply = llm.get_ai_reply(
+                "zoologi",
+                "PROMPT GURU",
+                [
+                    {"role": "user", "content": "halo"},
+                    {"role": "assistant", "content": "hai"},
+                ],
+                "Apa itu komodo?",
+            )
+
+        self.assertEqual(reply, "Jawaban uji")
+        messages = self.request["messages"]
+        self.assertEqual(messages[0]["role"], "user")
+        blocks = messages[0]["content"]
+        self.assertEqual(blocks[0]["type"], "text")
+        self.assertEqual(blocks[1]["type"], "image")
+        self.assertEqual(blocks[1]["cache_control"], {"type": "ephemeral"})
+        self.assertEqual(messages[1], {"role": "user", "content": "halo"})
+        self.assertEqual(messages[-1], {"role": "user", "content": "Apa itu komodo?"})
+
+    def test_screenshot_besar_dikompres_dan_gambar_kecil_dibiarkan(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        Image.new("RGB", (3000, 1200), "white").save(self.image_dir / "01-besar.png")
+        Image.new("RGB", (320, 200), "white").save(self.image_dir / "02-kecil.png")
+
+        blocks = llm._load_material_images("zoologi")
+
+        self.assertEqual(len(blocks), 2)
+        besar = blocks[0]["source"]
+        self.assertEqual(besar["media_type"], "image/jpeg")
+        gambar = Image.open(BytesIO(base64.b64decode(besar["data"])))
+        self.assertLessEqual(max(gambar.size), llm.MATERIAL_IMAGE_MAX_EDGE)
+        self.assertLessEqual(
+            gambar.size[0] * gambar.size[1], llm.MATERIAL_IMAGE_MAX_PIXELS
+        )
+
+        kecil = blocks[1]["source"]
+        self.assertEqual(kecil["media_type"], "image/png")
+
+    def test_pdf_materi_dikirim_sebagai_document_sebelum_teks(self):
+        pdf_dir = self.materials / "pdf" / "zoologi"
+        pdf_dir.mkdir(parents=True)
+        isi = b"%PDF-1.4\nisi materi hasil scan"
+        (pdf_dir / "materi.pdf").write_bytes(isi)
+
+        blocks = llm._load_material_pdfs("zoologi")
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0]["type"], "document")
+        self.assertEqual(blocks[0]["source"]["media_type"], "application/pdf")
+        self.assertEqual(base64.b64decode(blocks[0]["source"]["data"]), isi)
+
+        with patch.object(llm, "_get_client", return_value=self.client):
+            llm.get_ai_reply("zoologi", "PROMPT", [], "Apa isi materinya?")
+
+        content = self.request["messages"][0]["content"]
+        self.assertEqual([block["type"] for block in content], ["document", "text"])
+        self.assertEqual(content[-1]["cache_control"], {"type": "ephemeral"})
+
+    def test_tanpa_gambar_tidak_menambah_pesan_kosong(self):
+        with patch.object(llm, "_get_client", return_value=self.client):
+            llm.get_ai_reply("fisika", "PROMPT GURU", [], "Halo")
+
+        self.assertEqual(self.request["messages"], [{"role": "user", "content": "Halo"}])
 
 
 if __name__ == "__main__":

@@ -207,6 +207,15 @@ def main():
     run("pilih grup sains lagi", make_event("7", phone=p), expect="Eksperimen")
     run("pilih sub-menu 8 -> Eksperimen", make_event("8", phone=p), expect="belajar *Eksperimen*")
 
+    p = fresh_user()
+    run("buka grup sains untuk uji angka salah", make_event("7", phone=p), expect="8 sub-menu")
+    run(
+        "sub-menu di luar daftar ditolak ramah",
+        make_event("9", phone=p),
+        expect="Pilih angka 1 sampai 8",
+    )
+    run("sub-menu valid setelah angka salah", make_event("2", phone=p), expect="belajar *Botani*")
+
     p = fresh_user(); belajar(p)
     run("menu saat pelajaran aktif membuka daftar", make_event("menu", phone=p), expect="Ayo Sain Olimpiade")
     run("pilih pelajaran setelah menu", make_event("1", phone=p), expect="Matematika")
@@ -396,6 +405,9 @@ def main():
 
     got = wb.parse_command("8", subject_active=False, group_key="sain_olimpiade")
     results.append(("parse('8') di sub-menu sains", got == ("pilih_subject", 8), f"{got}"))
+
+    got = wb.parse_command("9", subject_active=False, group_key="sain_olimpiade")
+    results.append(("parse('9') di sub-menu sains", got == ("pilih_subject", 9), f"{got}"))
 
     # --- Whitelist akses bot ---
     admin = "6281111111111"

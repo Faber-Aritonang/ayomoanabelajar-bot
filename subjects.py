@@ -269,9 +269,9 @@ SUBJECT_GROUPS = {
         "name": "Ayo Sain Olimpiade",
         "emoji": "🔬",
         "description": (
-            "Delapan sub-menu sains untuk memperluas rasa ingin tahu dan latihan "
-            "olimpiade: Zoologi, Botani, Tubuh Manusia, Fisika, Astronomi, "
-            "Ekologi, Mengungkap Rahasia, dan Eksperimen."
+            "Delapan sub-menu sains untuk melatih rasa ingin tahu dan soal gaya "
+            "olimpiade: Zoologi, Botani, Tubuh Manusia, Fisika, Astronomi/Bumi "
+            "dan Antariksa, Ekologi, Mengungkap Rahasia, dan Eksperimen."
         ),
         "children": [
             "zoologi",
@@ -305,6 +305,14 @@ def get_subject(key: str):
 def get_group(key: str):
     """Ambil data grup menu (mis. Ayo Sain Olimpiade), atau None."""
     return SUBJECT_GROUPS.get(key)
+
+
+def group_of(subject_key: str):
+    """Key grup yang memuat sub-menu ini, atau None untuk pelajaran utama."""
+    for key, group in SUBJECT_GROUPS.items():
+        if subject_key in group["children"]:
+            return key
+    return None
 
 
 def list_subjects(group_key: str | None = None):
